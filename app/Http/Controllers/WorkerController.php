@@ -108,6 +108,11 @@ class WorkerController extends Controller
 
         try {
             $ai = app(PhotoAnalyzer::class)->analyze($tmp);
+        } catch (\Throwable $e) {
+            \Log::warning('AI photo analyze error', ['message' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'The AI vision service is temporarily busy. Please tap "Re-Scan Photo" to try again.'
+            ], 422);
         } finally {
             @unlink($tmp);
         }

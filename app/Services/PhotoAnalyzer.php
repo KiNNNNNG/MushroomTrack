@@ -81,57 +81,63 @@ TXT;
     private function analyzeWithGemini(string $data, string $mediaType, string $note): array
     {
         $key = config('mushroomtrack.ai.gemini_api_key');
-        $model = config('mushroomtrack.ai.model', 'gemini-3.5-flash');
-        if (!str_contains($model, 'gemini')) $model = 'gemini-3.5-flash';
+        $primaryModel = config('mushroomtrack.ai.model', 'gemini-3.5-flash');
+        if (!str_contains($primaryModel, 'gemini')) $primaryModel = 'gemini-3.5-flash';
 
-        $endpoint = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$key}";
+        $candidateModels = array_values(array_unique([$primaryModel, 'gemini-3.5-flash', 'gemini-3-flash-preview', 'gemini-3.5-flash-lite']));
+        $lastError = null;
 
+        foreach ($candidateModels as $model) {
+            $endpoint = "https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent?key={$key}";
 
-        $response = Http::acceptJson()->asJson()
-            ->connectTimeout(8)->timeout((int) config('mushroomtrack.ai.timeout', 40))
-            ->post($endpoint, [
-                'system_instruction' => ['parts' => [['text' => self::SYSTEM]]],
-                'contents' => [
-                    [
-                        'role' => 'user',
-                        'parts' => [
-                            ['inline_data' => ['mime_type' => $mediaType, 'data' => $data]],
-                            ['text' => $note]
+            $response = Http::acceptJson()->asJson()
+                ->connectTimeout(8)->timeout((int) config('mushroomtrack.ai.timeout', 40))
+                ->post($endpoint, [
+                    'system_instruction' => ['parts' => [['text' => self::SYSTEM]]],
+                    'contents' => [
+                        [
+                            'role' => 'user',
+                            'parts' => [
+                                ['inline_data' => ['mime_type' => $mediaType, 'data' => $data]],
+                                ['text' => $note]
+                            ]
                         ]
-                    ]
-                ],
-                'generationConfig' => [
-                    'temperature' => 0.2,
-                    'response_mime_type' => 'application/json',
-                    'response_schema' => [
-                        'type' => 'OBJECT',
-                        'properties' => [
-                            'status' => ['type' => 'STRING', 'enum' => self::STATUSES],
-                            'contamination_type' => ['type' => 'STRING', 'enum' => self::CONTAMINATION],
-                            'confidence' => ['type' => 'STRING', 'enum' => self::CONFIDENCE],
-                            'growth_stage' => ['type' => 'STRING', 'enum' => self::STAGES],
-                            'days_to_harvest' => ['type' => 'INTEGER'],
-                            'summary' => ['type' => 'STRING'],
-                        ],
-                        'required' => ['status', 'contamination_type', 'confidence', 'growth_stage', 'summary'],
                     ],
-                ]
+                    'generationConfig' => [
+                        'temperature' => 0.2,
+                        'response_mime_type' => 'application/json',
+                        'response_schema' => [
+                            'type' => 'OBJECT',
+                            'properties' => [
+                                'status' => ['type' => 'STRING', 'enum' => self::STATUSES],
+                                'contamination_type' => ['type' => 'STRING', 'enum' => self::CONTAMINATION],
+                                'confidence' => ['type' => 'STRING', 'enum' => self::CONFIDENCE],
+                                'growth_stage' => ['type' => 'STRING', 'enum' => self::STAGES],
+                                'days_to_harvest' => ['type' => 'INTEGER'],
+                                'summary' => ['type' => 'STRING'],
+                            ],
+                            'required' => ['status', 'contamination_type', 'confidence', 'growth_stage', 'summary'],
+                        ],
+                    ]
+                ]);
+
+            if ($response->successful()) {
+                $jsonStr = $response->json('candidates.0.content.parts.0.text');
+                if ($jsonStr) {
+                    $decoded = json_decode($jsonStr, true);
+                    if (is_array($decoded)) {
+                        return $this->clean($decoded);
+                    }
+                }
+            }
+
+            Log::warning("MushFungAI Gemini review on {$model} returned {$response->status()}", [
+                'body' => Str::limit($response->body(), 300)
             ]);
-
-        if ($response->failed()) {
-            Log::warning('MushFungAI Gemini photo review failed', ['status' => $response->status(), 'body' => Str::limit($response->body(), 500)]);
-            throw new RuntimeException('AI service error (HTTP '.$response->status().')');
+            $lastError = "AI service error (HTTP {$response->status()})";
         }
 
-        $jsonStr = $response->json('candidates.0.content.parts.0.text');
-        if (!$jsonStr) {
-            throw new RuntimeException('AI returned no usable answer.');
-        }
-
-        $decoded = json_decode($jsonStr, true);
-        if (!is_array($decoded)) throw new RuntimeException('AI returned invalid JSON.');
-
-        return $this->clean($decoded);
+        throw new RuntimeException($lastError ?? 'AI service temporarily unavailable. Please tap Re-Scan Photo to try again.');
     }
 
     private function analyzeWithAnthropic(string $data, string $mediaType, string $note): array

@@ -262,13 +262,16 @@ if (aiScanBtn) {
       }
 
 
-      if (!res.ok) throw new Error('AI error ' + res.status);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || ('AI error ' + res.status));
+      }
       const r = await res.json();
       renderAiResult(r);
     } catch (e) {
       aiResult.hidden = false;
       aiResult.className = 'ai-card';
-      aiResult.innerHTML = '<p style="color:#b91c1c">⚠ AI scan failed: ' + e.message + '</p>';
+      aiResult.innerHTML = '<p style="color:#b91c1c;margin:0">⚠ ' + e.message + '</p>';
     } finally {
       aiScanBtn.disabled = false;
       aiScanBtn.innerHTML = '🔍 RE-SCAN PHOTO';

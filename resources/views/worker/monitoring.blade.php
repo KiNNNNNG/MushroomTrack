@@ -59,7 +59,7 @@
               data-bags="{{ $b->bags }}"
               data-harvest="{{ optional($b->harvest_date)->format('Y-m-d') ?? '' }}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-        DAILY CHECK
+        START DAILY CHECK
       </button>
     </div>
   @empty
@@ -68,7 +68,7 @@
 </div>
 
 
-{{-- ── Daily check dialog ───────────────────────────────────────── --}}
+{{-- ── START DAILY CHECK dialog ───────────────────────────────────────── --}}
 <dialog id="checkDlg" class="cd">
   <button type="button" class="cdx" onclick="this.closest('dialog').close()" aria-label="Close">✕</button>
   <h3 id="checkTitle"></h3>
@@ -212,7 +212,7 @@ function handleQrResult(raw) {
   // Support full URL (/worker/scan/BATCH-001) or bare code (BATCH-001)
   const match = raw.match(/\/scan\/([^/?#]+)/);
   const code = match ? match[1] : raw.trim();
-  // Find matching batch card and trigger its Daily Check button
+  // Find matching batch card and trigger its START DAILY CHECK button
   const btn = [...document.querySelectorAll('[data-check]')].find(b => b.dataset.code === code);
   if (btn) {
     btn.click();

@@ -15,7 +15,7 @@ use Illuminate\Http\Request;
 
 class AdminController extends Controller
 {
-    public function dashboard(Request $request)
+        public function dashboard(Request $request)
     {
         $range = $request->query('range', 'month');
         $from = DateRange::from($range);
@@ -27,14 +27,31 @@ class AdminController extends Controller
             ->groupBy('date')->orderBy('date')->get()
             ->map(fn ($s) => ['date' => $s->date, 'amount' => (float) $s->amount])->values();
 
+        $pendingOrdersList = Order::with('user', 'product')->where('status', 'pending')->latest()->take(3)->get();
+        $lowStockProducts  = Product::where('stock_kg', '<=', 5)->orderBy('stock_kg')->take(3)->get();
+        $upcomingHarvests  = Batch::where('status', 'fruiting')->whereNotNull('harvest_date')->where('harvest_date', '<=', now()->addDays(5))->orderBy('harvest_date')->take(3)->get();
+
+        $activeBatches  = Batch::whereIn('status', ['incubating', 'fruiting'])->count();
+        $totalBatches   = Batch::count();
+        $harvestedYield = (float) Batch::sum('yield_kg');
+        $availableStock = (float) Product::sum('stock_kg');
+        $attentionCount = Order::where('status', 'pending')->count() + Product::where('stock_kg', '<=', 5)->count() + Batch::where('status', 'fruiting')->whereNotNull('harvest_date')->where('harvest_date', '<=', now()->addDays(5))->count();
+
         return view('admin.dashboard', [
-            'totalBatches'   => Batch::count(),
-            'pendingOrders'  => Order::where('status', 'pending')->count(),
-            'revenue'        => $salesQuery->sum('amount'),
-            'yield'          => (float) Batch::sum('yield_kg'),
-            'sales'          => $sales,
-            'range'          => $range,
-            'recentActivity' => ActivityLog::latest()->take(5)->get(),
+            'activeBatches'     => $activeBatches,
+            'totalBatches'      => $totalBatches,
+            'harvestedYield'    => $harvestedYield,
+            'availableStock'    => $availableStock,
+            'attentionCount'    => $attentionCount,
+            'pendingOrdersList' => $pendingOrdersList,
+            'lowStockProducts'  => $lowStockProducts,
+            'upcomingHarvests'  => $upcomingHarvests,
+            'pendingOrders'     => Order::where('status', 'pending')->count(),
+            'revenue'           => $salesQuery->sum('amount'),
+            'yield'             => $harvestedYield,
+            'sales'             => $sales,
+            'range'             => $range,
+            'recentActivity'    => ActivityLog::latest()->take(5)->get(),
         ]);
     }
 

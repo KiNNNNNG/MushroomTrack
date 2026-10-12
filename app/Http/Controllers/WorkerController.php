@@ -21,17 +21,28 @@ use Throwable;
 
 class WorkerController extends Controller
 {
-    public function overview()
+        public function overview()
     {
         // Gentle once-a-day reminders for this worker (the 8am scheduled job also texts / emails them)
         Reminders::forWorker(auth()->user());
 
+        $fruitingBatches = Batch::where('status', 'fruiting')
+            ->with(['monitoringLogs' => fn ($q) => $q->latest()->limit(1)])
+            ->orderBy('harvest_date')
+            ->get();
+
+        $needsCheckCount = Batch::where('status', 'fruiting')
+            ->whereDoesntHave('monitoringLogs', fn ($q) => $q->whereDate('created_at', today()))
+            ->count();
+
         return view('worker.overview', [
-            'fruiting'   => Batch::where('status', 'fruiting')->count(),
-            'incubating' => Batch::where('status', 'incubating')->count(),
-            'lost'       => Batch::sum('lost_bags'),
-            'yield'      => (float) Batch::sum('yield_kg'),
-            'logs'       => MonitoringLog::with('batch')->latest()->limit(5)->get(),
+            'fruiting'        => Batch::where('status', 'fruiting')->count(),
+            'incubating'      => Batch::where('status', 'incubating')->count(),
+            'lost'            => Batch::sum('lost_bags'),
+            'yield'           => (float) Batch::sum('yield_kg'),
+            'fruitingBatches' => $fruitingBatches,
+            'needsCheckCount' => $needsCheckCount,
+            'logs'            => MonitoringLog::with('batch')->latest()->limit(5)->get(),
         ]);
     }
 

@@ -3,8 +3,11 @@ $u = auth()->user();
 $role = $u->role;
 $navs = [
   'admin' => [
-    ['admin.dashboard', 'dashboard', 'Dashboard', 'Dash'], ['admin.batches', 'batches', 'Batches', 'Batches'], ['admin.store', 'store', 'Store', 'Store'],
-    ['admin.reports', 'reports', 'Reports', 'Reports'], ['admin.users', 'users', 'Users', 'Users'],
+    ['admin.dashboard', 'dashboard', 'Dashboard', 'Dash'],
+    ['admin.batches', 'batches', 'Cultivation & Batches', 'Batches'],
+    ['admin.store', 'store', 'Inventory & Store', 'Store'],
+    ['admin.reports', 'reports', 'Reports & Analytics', 'Reports'],
+    ['admin.users', 'users', 'Personnel & Roles', 'Users'],
   ],
   'worker' => [
     ['worker.overview', 'dashboard', 'Operations Overview', 'Home'], ['worker.monitoring', 'clipboard', 'Fruiting Monitoring', 'Fruiting'],

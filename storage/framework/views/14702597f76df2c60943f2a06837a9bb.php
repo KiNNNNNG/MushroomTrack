@@ -115,7 +115,7 @@
               data-bags="<?php echo e($b->bags); ?>"
               data-harvest="<?php echo e(optional($b->harvest_date)->format('Y-m-d') ?? ''); ?>">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-        DAILY CHECK
+        START DAILY CHECK
       </button>
     </div>
   <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
@@ -325,7 +325,7 @@ function handleQrResult(raw) {
   // Support full URL (/worker/scan/BATCH-001) or bare code (BATCH-001)
   const match = raw.match(/\/scan\/([^/?#]+)/);
   const code = match ? match[1] : raw.trim();
-  // Find matching batch card and trigger its Daily Check button
+  // Find matching batch card and trigger its START DAILY CHECK button
   const btn = [...document.querySelectorAll('[data-check]')].find(b => b.dataset.code === code);
   if (btn) {
     btn.click();
@@ -375,13 +375,16 @@ if (aiScanBtn) {
       }
 
 
-      if (!res.ok) throw new Error('AI error ' + res.status);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || ('AI error ' + res.status));
+      }
       const r = await res.json();
       renderAiResult(r);
     } catch (e) {
       aiResult.hidden = false;
       aiResult.className = 'ai-card';
-      aiResult.innerHTML = '<p style="color:#b91c1c">⚠ AI scan failed: ' + e.message + '</p>';
+      aiResult.innerHTML = '<p style="color:#b91c1c;margin:0">⚠ ' + e.message + '</p>';
     } finally {
       aiScanBtn.disabled = false;
       aiScanBtn.innerHTML = '🔍 RE-SCAN PHOTO';
@@ -393,33 +396,43 @@ const STATUS_COLORS = { healthy: '#16a34a', attention: '#d97706', contaminated: 
 const STATUS_ICONS  = { healthy: '✅', attention: '⚠️', contaminated: '🚨', unclear: '❓' };
 
 function renderAiResult(r) {
-  const badge = document.getElementById('aiBadge');
-  badge.textContent = (STATUS_ICONS[r.status] || '') + ' ' + r.status.toUpperCase();
-  badge.style.background = (STATUS_COLORS[r.status] || '#64748b') + '22';
-  badge.style.color = STATUS_COLORS[r.status] || '#64748b';
-
-  document.getElementById('aiConfidence').textContent = r.confidence + ' confidence';
-  document.getElementById('aiDays').textContent = r.days_to_harvest != null
+  const badgeColor = STATUS_COLORS[r.status] || '#64748b';
+  const badgeIcon  = STATUS_ICONS[r.status] || '';
+  const daysText   = r.days_to_harvest != null
     ? (r.days_to_harvest === 0 ? '🌾 Ready to harvest today!' : '🗓 ~' + r.days_to_harvest + ' days to harvest')
     : '';
 
   let stageText = r.stage_label || r.stage;
-  if (r.contamination && r.contamination !== 'none') stageText += ' · ' + (r.contamination_label || r.contamination);
-  document.getElementById('aiStageRow').textContent = stageText;
-  document.getElementById('aiSummary').textContent = r.summary;
+  if (r.contamination && r.contamination !== 'none') {
+    stageText += ' · ' + (r.contamination_label || r.contamination);
+  }
+
+  aiResult.className = 'ai-card';
+  aiResult.innerHTML = `
+    <div class="ai-card-hd" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <span class="ai-badge" style="background:${badgeColor}22;color:${badgeColor};padding:4px 10px;border-radius:20px;font:700 11px Arial;letter-spacing:.5px;text-transform:uppercase">${badgeIcon} ${(r.status || 'UNKNOWN').toUpperCase()}</span>
+      <span style="font-size:11px;color:var(--muted)">${r.confidence || 'normal'} confidence</span>
+      ${daysText ? `<span style="font-size:12px;font-weight:700;color:var(--gold);margin-left:auto">${daysText}</span>` : ''}
+    </div>
+    <div style="font-size:12px;color:#52617d;margin-bottom:6px;font-weight:600">${stageText}</div>
+    <p style="font-size:13px;line-height:1.6;margin:0;color:var(--ink)">${r.summary || ''}</p>
+    <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Notes auto-filled below. Edit freely before submitting.</p>
+  `;
+  aiResult.hidden = false;
 
   // Auto-fill notes
   const notes = document.getElementById('checkNotes');
-  let autoNote = '[AI] ' + r.summary;
-  if (r.days_to_harvest != null) autoNote += (r.days_to_harvest === 0 ? ' Ready to harvest.' : ' Est. harvest in ' + r.days_to_harvest + ' day(s).');
-  if (notes.value.trim() === '' || notes.value.startsWith('[AI]')) notes.value = autoNote;
+  if (notes) {
+    let autoNote = '[AI] ' + (r.summary || '');
+    if (r.days_to_harvest != null) autoNote += (r.days_to_harvest === 0 ? ' Ready to harvest.' : ' Est. harvest in ' + r.days_to_harvest + ' day(s).');
+    if (notes.value.trim() === '' || notes.value.startsWith('[AI]')) notes.value = autoNote;
+  }
 
   // Auto-set condition based on AI
   if (r.status === 'healthy') triggerCondition('good');
   else if (r.status === 'contaminated') triggerCondition('defect');
 
   if (aiPrescan) aiPrescan.value = '1';
-  aiResult.hidden = false;
 }
 
 /* ── Condition buttons ───────────────────────────────────────────── */

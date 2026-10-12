@@ -22,6 +22,15 @@ putenv('APP_CONFIG_CACHE=/tmp/config.php');
 putenv('APP_ROUTES_CACHE=/tmp/routes.php');
 putenv('APP_EVENTS_CACHE=/tmp/events.php');
 
+// Set HTTPS for Vercel edge proxy
+if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    $_SERVER['HTTPS'] = 'on';
+    $_SERVER['SERVER_PORT'] = 443;
+} else {
+    $_SERVER['HTTPS'] = 'on';
+    $_SERVER['SERVER_PORT'] = 443;
+}
+
 // Forward all requests to Laravel's front controller
 require __DIR__ . '/../public/index.php';
 

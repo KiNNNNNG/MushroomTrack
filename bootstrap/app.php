@@ -14,6 +14,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustProxies(at: '*');
+
         // PayMongo's server-to-server webhook cannot send a CSRF token
         $middleware->preventRequestForgery(except: ['webhooks/paymongo']);
 

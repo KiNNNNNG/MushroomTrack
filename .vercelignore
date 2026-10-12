@@ -9,3 +9,4 @@ node_modules
 /storage/framework/sessions
 /storage/framework/views
 database_backup_*.sql
+

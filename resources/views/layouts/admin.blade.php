@@ -8,8 +8,6 @@ $navs = [
     ['admin.store', 'store', 'Inventory & Store', 'Store'],
     ['admin.reports', 'reports', 'Reports & Analytics', 'Reports'],
     ['admin.users', 'users', 'Personnel & Roles', 'Users'],
-  ], ['admin.batches', 'batches', 'Batches', 'Batches'], ['admin.store', 'store', 'Store', 'Store'],
-    ['admin.reports', 'reports', 'Reports', 'Reports'], ['admin.users', 'users', 'Users', 'Users'],
   ],
   'worker' => [
     ['worker.overview', 'dashboard', 'Operations Overview', 'Home'], ['worker.monitoring', 'clipboard', 'Fruiting Monitoring', 'Fruiting'],

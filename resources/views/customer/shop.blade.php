@@ -34,7 +34,7 @@
         </div>
 
         <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 16px;">
-          <span style="font-size: 18px; color: var(--brown); font-weight: 800;">?{{ $fmt($p->price) }} <small style="font-size: 12px; color: var(--muted); font-weight: 600;">/ kg</small></span>
+          <span style="font-size: 18px; color: var(--brown); font-weight: 800;">&#8369;{{ $fmt($p->price) }} <small style="font-size: 12px; color: var(--muted); font-weight: 600;">/ kg</small></span>
           <span style="font-size: 12px; color: var(--muted);">Stock: <strong>{{ $p->stock_kg }} kg</strong></span>
         </div>
         

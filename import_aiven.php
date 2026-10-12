@@ -43,9 +43,16 @@ try {
     }
 
     echo "Reading database_backup_before_improvements.sql...\n";
-    $sql = file_get_contents($backupFile);
+    $raw = file_get_contents($backupFile);
+    if (substr($raw, 0, 2) === "\xFF\xFE") {
+        echo "Detected UTF-16LE encoding; converting to UTF-8...\n";
+        $sql = mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16LE');
+    } else {
+        $sql = $raw;
+    }
 
     echo "Importing all tables and data into Aiven...\n";
+    $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, 1);
     $pdo->exec($sql);
     echo "SUCCESS! Database imported completely into Aiven!\n\n";
 

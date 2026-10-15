@@ -40,11 +40,11 @@ class MushroomTrackSeeder extends Seeder
 
         $white = Product::updateOrCreate(['name' => 'Fresh Organic White Oyster Mushrooms'], [
             'price' => 180, 'stock_kg' => 45,
-            'image_url' => 'https://images.unsplash.com/photo-1549007994-cb92caebd54b?w=600&q=70',
+            'image_url' => '/images/products/white-oyster-mushrooms.jpg',
         ]);
         Product::updateOrCreate(['name' => 'Premium Grey Oyster Mushrooms Allocation'], [
             'price' => 160, 'stock_kg' => 150,
-            'image_url' => 'https://images.unsplash.com/photo-1535254973040-607b474cb50d?w=600&q=70',
+            'image_url' => '/images/products/grey-oyster-mushrooms.jpg',
         ]);
 
         if (! Sale::exists()) {

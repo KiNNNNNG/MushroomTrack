@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Support\DateRange;
 use App\Support\Qr;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class AdminController extends Controller
 {
@@ -38,7 +39,7 @@ class AdminController extends Controller
             'totalBatches'   => $totalBatches,
             'harvestedYield' => $harvestedYield,
             'availableStock' => $availableStock,
-            'revenue'        => Sale::sum('amount') - Expense::sum('amount'),
+            'revenue'        => (Sale::sum('amount') ?? 0) - (Schema::hasTable('expenses') ? (Expense::sum('amount') ?? 0) : 0),
             'yield'          => $harvestedYield,
             'sales'          => $sales,
             'range'          => $range,
@@ -86,9 +87,10 @@ class AdminController extends Controller
 
         $from = DateRange::from($range);
 
-        $expensesQuery = \App\Models\Expense::query()
+        $hasExpenses = Schema::hasTable('expenses');
+        $expensesQuery = $hasExpenses ? \App\Models\Expense::query()
             ->whereYear('expense_date', $year)
-            ->whereMonth('expense_date', $month);
+            ->whereMonth('expense_date', $month) : null;
 
         $salesQuery = \App\Models\Sale::query()
             ->whereYear('sold_at', $year)
@@ -104,8 +106,8 @@ class AdminController extends Controller
             'history'       => $tab === 'history'  ? Order::with('user', 'product', 'payment')->whereIn('status', ['completed', 'cancelled'])->latest()->get() : collect(),
             'sales'         => $tab === 'sales'    ? $salesQuery->get() : collect(),
             'totalSales'    => $salesQuery->sum('amount'),
-            'expenses'      => $tab === 'expenses' ? $expensesQuery->get() : collect(),
-            'totalExpenses' => $expensesQuery->sum('amount'),
+            'expenses'      => ($tab === 'expenses' && $expensesQuery) ? $expensesQuery->get() : collect(),
+            'totalExpenses' => $expensesQuery ? $expensesQuery->sum('amount') : 0,
         ]);
     }
 

@@ -90,21 +90,40 @@
       </div>
     </div>
 
-    {{-- Upload Photos (Multiple) --}}
+    {{-- Upload / Camera Photos (Multiple) --}}
     <div style="margin-bottom: 24px;">
-      <label style="display: block; font-size: 11px; font-weight: 700; color: #8a7f74; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px;">UPLOAD PHOTOS OF BAGS TO DISPOSE (MULTIPLE)</label>
+      <label style="display: block; font-size: 11px; font-weight: 700; color: #8a7f74; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px;">CAPTURE OR UPLOAD PHOTOS (MULTIPLE)</label>
       
+      <input type="file" id="batchCameraInput" accept="image/*" capture="environment" style="display: none;" onchange="handleCameraPhotoSelected(this)">
       <input type="file" id="batchPhotosInput" multiple accept="image/*" style="display: none;" onchange="handlePhotosSelected(this)">
       
-      <div onclick="document.getElementById('batchPhotosInput').click()"
-        style="height: 76px; border: 1.5px dashed #d5cebf; border-radius: 10px; background: #fcfbfa; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; color: #756a60; font-size: 13px; font-weight: 600; transition: border-color 0.15s ease;"
-        onmouseover="this.style.borderColor='#205e46'" onmouseout="this.style.borderColor='#d5cebf'">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        <span>&uarr; Tap to upload photos</span>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        {{-- Option 1: Live Camera Button --}}
+        <div onclick="document.getElementById('batchCameraInput').click()"
+          style="padding: 14px 10px; border: 1.5px dashed #205e46; border-radius: 12px; background: rgba(32, 94, 70, 0.05); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; cursor: pointer; color: #205e46; font-size: 12px; font-weight: 700; transition: all 0.15s ease;"
+          onmouseover="this.style.background='rgba(32, 94, 70, 0.1)'" onmouseout="this.style.background='rgba(32, 94, 70, 0.05)'">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          <span>TAKE PHOTO</span>
+        </div>
+
+        {{-- Option 2: Gallery / Files Button --}}
+        <div onclick="document.getElementById('batchPhotosInput').click()"
+          style="padding: 14px 10px; border: 1.5px dashed #d5cebf; border-radius: 12px; background: #fcfbfa; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; cursor: pointer; color: #756a60; font-size: 12px; font-weight: 700; transition: all 0.15s ease;"
+          onmouseover="this.style.borderColor='#205e46'; this.style.color='#205e46'" onmouseout="this.style.borderColor='#d5cebf'; this.style.color='#756a60'">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>UPLOAD FILES</span>
+        </div>
       </div>
 
-      {{-- Preview Thumbnails --}}
-      <div id="photosGallery" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;"></div>
+      {{-- Preview Thumbnails with Delete Badges --}}
+      <div id="photosGallery" style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px;"></div>
     </div>
 
     {{-- Modal Footer --}}
@@ -211,7 +230,8 @@ function openDailyCheck(batchId, code, name, bags) {
   document.getElementById('checkModalBatchInfo').textContent = code + ' · ' + name;
   document.getElementById('photosGallery').innerHTML = '';
   document.getElementById('detectBtn').textContent = 'PROCEED TO CHECK';
-  document.getElementById('batchPhotosInput').value = '';
+  if (document.getElementById('batchPhotosInput')) document.getElementById('batchPhotosInput').value = '';
+  if (document.getElementById('batchCameraInput')) document.getElementById('batchCameraInput').value = '';
 
   setWatered(true);
   document.getElementById('dailyCheckModal').showModal();
@@ -231,23 +251,59 @@ function setWatered(isYes) {
   }
 }
 
+function handleCameraPhotoSelected(input) {
+  if (!input.files || !input.files[0]) return;
+  _selectedFiles.push(input.files[0]);
+  input.value = '';
+  renderPhotosGallery();
+}
+
 function handlePhotosSelected(input) {
+  if (!input.files || !input.files.length) return;
+  Array.from(input.files).forEach(function(f) {
+    _selectedFiles.push(f);
+  });
+  input.value = '';
+  renderPhotosGallery();
+}
+
+function removeSelectedPhoto(index) {
+  _selectedFiles.splice(index, 1);
+  renderPhotosGallery();
+}
+
+function renderPhotosGallery() {
   var gallery = document.getElementById('photosGallery');
   gallery.innerHTML = '';
-  _selectedFiles = Array.from(input.files);
 
   if (_selectedFiles.length > 0) {
     document.getElementById('detectBtn').textContent = 'DETECT (' + _selectedFiles.length + ')';
     
-    _selectedFiles.forEach(function(file) {
-      var thumb = document.createElement('div');
-      thumb.style.cssText = 'width: 54px; height: 54px; border-radius: 8px; background: #ebdfcc; background-size: cover; background-position: center; border: 1px solid #e5ded4;';
+    _selectedFiles.forEach(function(file, idx) {
+      var thumbWrap = document.createElement('div');
+      thumbWrap.style.cssText = 'position: relative; width: 62px; height: 62px; border-radius: 10px; overflow: hidden; border: 1.5px solid #dcd5c9; background: #ebdfcc; flex-shrink: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.06);';
+      
+      var img = document.createElement('img');
+      img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; display: block;';
       var reader = new FileReader();
       reader.onload = function(e) {
-        thumb.style.backgroundImage = 'url(' + e.target.result + ')';
+        img.src = e.target.result;
       };
       reader.readAsDataURL(file);
-      gallery.appendChild(thumb);
+      thumbWrap.appendChild(img);
+
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.innerHTML = '&times;';
+      removeBtn.style.cssText = 'position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; background: rgba(36,28,22,0.85); color: #ffffff; border: none; font-size: 14px; font-weight: bold; line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer;';
+      removeBtn.title = 'Remove photo';
+      removeBtn.onclick = function(e) {
+        e.stopPropagation();
+        removeSelectedPhoto(idx);
+      };
+      thumbWrap.appendChild(removeBtn);
+
+      gallery.appendChild(thumbWrap);
     });
   } else {
     document.getElementById('detectBtn').textContent = 'PROCEED TO CHECK';

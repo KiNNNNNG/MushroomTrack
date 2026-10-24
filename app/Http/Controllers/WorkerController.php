@@ -21,10 +21,22 @@ use Throwable;
 
 class WorkerController extends Controller
 {
-        public function overview()
+    public function overview()
     {
-        // Gentle once-a-day reminders for this worker (the 8am scheduled job also texts / emails them)
-        Reminders::forWorker(auth()->user());
+        $user = auth()->user();
+        // Gentle reminders for this worker, cached for 30 minutes to eliminate redundant queries
+        \Illuminate\Support\Facades\Cache::remember("worker_reminders_{$user->id}_" . today()->toDateString(), 1800, function () use ($user) {
+            return Reminders::forWorker($user);
+        });
+
+        $batchStats = Batch::query()
+            ->selectRaw("
+                COUNT(CASE WHEN status = 'fruiting' THEN 1 END) as fruiting_count,
+                COUNT(CASE WHEN status = 'incubating' THEN 1 END) as incubating_count,
+                COALESCE(SUM(lost_bags), 0) as total_lost,
+                COALESCE(SUM(yield_kg), 0) as total_yield
+            ")
+            ->first();
 
         $fruitingBatches = Batch::where('status', 'fruiting')
             ->with(['monitoringLogs' => fn ($q) => $q->latest()->limit(1)])
@@ -36,10 +48,10 @@ class WorkerController extends Controller
             ->count();
 
         return view('worker.overview', [
-            'fruiting'        => Batch::where('status', 'fruiting')->count(),
-            'incubating'      => Batch::where('status', 'incubating')->count(),
-            'lost'            => Batch::sum('lost_bags'),
-            'yield'           => (float) Batch::sum('yield_kg'),
+            'fruiting'        => (int) ($batchStats->fruiting_count ?? 0),
+            'incubating'      => (int) ($batchStats->incubating_count ?? 0),
+            'lost'            => (int) ($batchStats->total_lost ?? 0),
+            'yield'           => (float) ($batchStats->total_yield ?? 0),
             'fruitingBatches' => $fruitingBatches,
             'needsCheckCount' => $needsCheckCount,
             'logs'            => MonitoringLog::with('batch')->latest()->limit(5)->get(),

@@ -30,7 +30,7 @@ $hubIcon = $role === 'worker' ? 'batches' : 'user';
         });
     }
     $notes  = $notesQuery->latest()->limit(20)->get();
-    $unread = (clone $notesQuery)->whereNull('read_at')->count();
+    $unread = $notes->whereNull('read_at')->count();
 }
 if ($role === 'customer') {
     $cart = \App\Models\CartItem::with('product')->where('user_id', $u->id)->get();
@@ -200,10 +200,21 @@ $fmtk = fn ($n) => rtrim(rtrim(number_format($n, 2), '0'), '.');
           </div>
         @endif
 
+        {{-- Mobile Download App Button in Top Bar --}}
+        <button type="button" class="pwa-install-btn mobile-header-install" onclick="installMushFungApp()" title="Download MushFungAI App"
+          style="display: none; align-items: center; justify-content: center; gap: 5px; background: rgba(178, 129, 53, 0.12); border: 1px solid rgba(178, 129, 53, 0.35); color: #a87834; border-radius: 12px; height: 42px; padding: 0 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.3px; cursor: pointer;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span style="font-size: 10px;">APP</span>
+        </button>
+
         <div class="ddwrap mobile-only">
           <button class="menu" id="menuBtn" data-dd aria-label="Menu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
           <div class="dd" id="menuDd">
             <span>{{ $u->name }} · {{ $role }}</span>
+            <button type="button" class="pwa-install-btn ddl" onclick="installMushFungApp()" style="display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: none; padding: 10px 14px; color: #a87834; font-weight: 800; font-size: 11px; cursor: pointer; border-bottom: 1px solid #f1ece4;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              INSTALL APP
+            </button>
             <a href="{{ route('profile') }}" class="ddl">MY PROFILE</a>
             <form method="POST" action="{{ route('logout') }}" data-confirm="You will be signed out of MushFungAI." data-title="Log out?" data-yes="LOG OUT">@csrf<button type="submit">LOG OUT</button></form>
           </div>
@@ -215,6 +226,7 @@ $fmtk = fn ($n) => rtrim(rtrim(number_format($n, 2), '0'), '.');
       @if (session('ok'))<div class="flash ok">{{ session('ok') }}</div>@endif
       @if (isset($errors) && $errors->any())<div class="flash err">{{ $errors->first() }}</div>@endif
       @yield('content')
+      <div class="mobile-bottom-spacer"></div>
     </div>
   </main>
   

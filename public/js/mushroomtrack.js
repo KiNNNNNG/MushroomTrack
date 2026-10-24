@@ -409,12 +409,23 @@ if ('serviceWorker' in navigator) {
 }
 
 let deferredInstallPrompt = null;
+function checkPwaDisplay() {
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  document.querySelectorAll('.pwa-install-btn, [data-pwa-install]').forEach(el => {
+    el.style.display = isStandalone ? 'none' : 'inline-flex';
+  });
+}
+
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
-  document.querySelectorAll('.pwa-install-btn, [data-pwa-install]').forEach(el => {
-    el.style.display = 'inline-flex';
-  });
+  checkPwaDisplay();
+});
+
+document.addEventListener('DOMContentLoaded', checkPwaDisplay);
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  document.querySelectorAll('.pwa-install-btn, [data-pwa-install]').forEach(el => el.style.display = 'none');
 });
 
 window.installMushFungApp = function() {
@@ -434,10 +445,39 @@ window.installMushFungApp = function() {
     if (isIos) {
       alert('To install MushFungAI on iOS:\n1. Tap the Share button in Safari (square with arrow up)\n2. Tap "Add to Home Screen"');
     } else {
-      alert('To install MushFungAI as an app:\n• On Chrome/Edge (Desktop): Click the "Install" icon in the address bar (top right).\n• On Android: Tap the browser menu (⋮) and choose "Install app" or "Add to Home Screen".');
+      alert('To install MushFungAI on mobile:\n1. Tap the 3-dots browser menu (⋮) at the top right\n2. Select "Install app" or "Add to Home Screen"');
     }
   }
 };
+
+/* Instant Navigation / Tab Prefetcher */
+(function() {
+  const prefetched = new Set();
+  function prefetchUrl(url) {
+    if (!url || prefetched.has(url)) return;
+    try {
+      const parsed = new URL(url, window.location.href);
+      if (parsed.origin !== window.location.origin) return;
+      if (parsed.pathname === window.location.pathname) return;
+      prefetched.add(url);
+      const link = document.createElement('link');
+      link.rel = 'prefetch';
+      link.href = url;
+      link.as = 'document';
+      document.head.appendChild(link);
+    } catch(e) {}
+  }
+
+  document.addEventListener('touchstart', (e) => {
+    const a = e.target.closest('a[href]');
+    if (a) prefetchUrl(a.href);
+  }, { passive: true });
+
+  document.addEventListener('mouseover', (e) => {
+    const a = e.target.closest('a[href]');
+    if (a) prefetchUrl(a.href);
+  }, { passive: true });
+})();
 
 /* ==========================================================================
    OFFLINE MONITORING SYNC ENGINE

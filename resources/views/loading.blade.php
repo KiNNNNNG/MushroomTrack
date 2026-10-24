@@ -198,10 +198,17 @@
   </div>
 
   <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(function() {});
+    }
     (function () {
       var target = "{{ route('home') }}";
       setTimeout(function () {
-        window.location.replace(target);
+        if (!navigator.onLine) {
+          window.location.replace('/worker/monitoring');
+        } else {
+          window.location.replace(target);
+        }
       }, 1400);
     })();
   </script>

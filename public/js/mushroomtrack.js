@@ -401,6 +401,25 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js')
       .then(reg => {
         // SW registered successfully
+        if (typeof reg.update === 'function') {
+          reg.update();
+        }
+
+        // Proactively warm offline cache for vital worker pages
+        if (navigator.onLine && 'caches' in window) {
+          caches.open('mushfung-cache-v5').then(cache => {
+            const pagesToWarm = ['/offline', '/worker/monitoring', '/worker/overview'];
+            pagesToWarm.forEach(url => {
+              fetch(url, { redirect: 'follow' })
+                .then(res => {
+                  if (res && (res.ok || res.status === 200)) {
+                    cache.put(url, res);
+                  }
+                })
+                .catch(() => {});
+            });
+          });
+        }
       })
       .catch(err => {
         console.warn('SW registration error:', err);

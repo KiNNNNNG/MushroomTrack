@@ -17,7 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: '*');
 
         // PayMongo's server-to-server webhook cannot send a CSRF token
-        $middleware->preventRequestForgery(except: ['webhooks/paymongo']);
+        // Worker monitoring store endpoints can be synced offline where CSRF tokens may expire
+        $middleware->preventRequestForgery(except: [
+            'webhooks/paymongo',
+            'worker/monitoring/*',
+        ]);
 
         $middleware->web(append: [
             HandleInertiaRequests::class,

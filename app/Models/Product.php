@@ -17,6 +17,14 @@ class Product extends Model
             return asset('images/products/white-oyster-mushrooms.jpg');
         }
 
+        if (str_contains($value, 'white-oyster-mushrooms')) {
+            return asset('images/products/white-oyster-mushrooms.jpg');
+        }
+
+        if (str_contains($value, 'grey-oyster-mushrooms')) {
+            return asset('images/products/grey-oyster-mushrooms.jpg');
+        }
+
         if (str_starts_with($value, 'http://') || str_starts_with($value, 'https://')) {
             return $value;
         }

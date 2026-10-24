@@ -1,0 +1,27 @@
+{
+  "name": "MushFungAI Farm Tracking",
+  "short_name": "MushFungAI",
+  "description": "Smart Monitoring for Healthier Mushrooms",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f9f6ee",
+  "theme_color": "#241c16",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"]
+}
+

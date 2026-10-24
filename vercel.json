@@ -17,8 +17,16 @@
       "dest": "/public/$1/$2"
     },
     {
-      "src": "/(.*)\\.(ico|jpg|jpeg|png|gif|svg|css|js|woff|woff2|ttf|eot)",
+      "src": "/(.*)\\.(ico|jpg|jpeg|png|gif|svg|css|js|json|woff|woff2|ttf|eot)",
       "dest": "/public/$1.$2"
+    },
+    {
+      "src": "/sw.js",
+      "dest": "/public/sw.js"
+    },
+    {
+      "src": "/manifest.json",
+      "dest": "/public/manifest.json"
     },
     {
       "src": "/favicon.ico",

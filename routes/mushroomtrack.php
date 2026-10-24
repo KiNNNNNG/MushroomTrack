@@ -16,8 +16,13 @@ use App\Http\Controllers\WorkerController;
 use App\Http\Middleware\EnsureRole;
 use Illuminate\Support\Facades\Route;
 
-// First thing visitors see: the loading screen, which then forwards to /home (or the login page)
-Route::view('/', 'loading')->name('splash');
+// First thing visitors see: redirect to dashboard if logged in, otherwise show animated splash screen
+Route::get('/', function () {
+    if (auth()->check()) {
+        return redirect()->route('home');
+    }
+    return view('loading');
+})->name('splash');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -54,12 +59,16 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/notifications/{notice}/open', [NoticeController::class, 'open'])->name('notifications.open');
     Route::post('/notifications/read-all', [NoticeController::class, 'readAll'])->name('notifications.readall');
+    Route::delete('/notifications/selected', [NoticeController::class, 'destroySelected'])->name('notifications.destroySelected');
+    Route::post('/notifications/selected/delete', [NoticeController::class, 'destroySelected'])->name('notifications.destroySelectedPost');
+    Route::delete('/notifications/{notice}', [NoticeController::class, 'destroy'])->name('notifications.destroy');
 });
 
 /* ---------------- ADMIN ---------------- */
 Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureRole::class.':admin'])->group(function () {
     Route::get('/', [AdminController::class, 'dashboard'])->name('dashboard');
     Route::get('/batches', [AdminController::class, 'batches'])->name('batches');
+    Route::get('/completed', [AdminController::class, 'completedBatches'])->name('completed');
     Route::get('/store', [AdminController::class, 'store'])->name('store');
     Route::get('/reports', [AdminController::class, 'reports'])->name('reports');
     Route::get('/users', [AdminController::class, 'users'])->name('users');
@@ -79,6 +88,10 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureRole::class.':
     Route::put('/orders/{order}/fulfillment', [OrderController::class, 'fulfillment'])->name('orders.fulfillment');
     Route::put('/payments/{payment}/refunded', [PaymentController::class, 'refunded'])->name('payments.refunded');
 
+    Route::post('/expenses', [AdminController::class, 'storeExpense'])->name('expenses.store');
+    Route::delete('/expenses/{expense}', [AdminController::class, 'destroyExpense'])->name('expenses.destroy');
+    Route::delete('/history/bulk', [AdminController::class, 'deleteHistory'])->name('history.destroy');
+
     Route::post('/users', [UserController::class, 'store'])->name('users.store');
     Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
     Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
@@ -88,18 +101,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', EnsureRole::class.':
 Route::prefix('worker')->name('worker.')->middleware(['auth', EnsureRole::class.':worker'])->group(function () {
     Route::get('/', [WorkerController::class, 'overview'])->name('overview');
     Route::get('/monitoring', [WorkerController::class, 'monitoring'])->name('monitoring');
-    Route::get('/scan/{batch:code}', [WorkerController::class, 'scan'])->name('scan');
-    Route::get('/bag/{batch:code}/{bag}', [WorkerController::class, 'bagMonitoring'])->name('bag');
+    Route::get('/ai-detection', [WorkerController::class, 'aiDetection'])->name('ai-detection');
     Route::post('/monitoring/analyze-photo', [WorkerController::class, 'analyzePhoto'])->name('monitoring.analyze');
+    Route::post('/monitoring/analyze-multiple', [WorkerController::class, 'analyzeMultiplePhotos'])->name('monitoring.analyzeMultiple');
     Route::post('/monitoring/{batch}', [WorkerController::class, 'storeCheck'])->name('monitoring.store');
     Route::get('/history', [WorkerController::class, 'history'])->name('history');
     Route::get('/register', [WorkerController::class, 'register'])->name('register');
     Route::post('/register', [WorkerController::class, 'storeBatch'])->name('register.store');
     Route::put('/register/{batch}/finalize', [WorkerController::class, 'finalizeFruiting'])->name('register.finalize');
-    Route::post('/bag/{batch:code}/{bag}/scan', [WorkerController::class, 'scanIncubatingBag'])->name('bag.scan');
-    Route::get('/batches/labels', [WorkerController::class, 'labels'])->name('batches.labels');
     Route::get('/harvest', [WorkerController::class, 'harvest'])->name('harvest');
     Route::post('/harvest', [WorkerController::class, 'storeHarvest'])->name('harvest.store');
+    Route::get('/completed', [WorkerController::class, 'completedBatches'])->name('completed');
 });
 
 /* ---------------- CUSTOMER ---------------- */
@@ -108,6 +120,8 @@ Route::prefix('shop')->name('customer.')->middleware(['auth', EnsureRole::class.
     Route::get('/orders', [CustomerController::class, 'orders'])->name('orders');
     Route::get('/history', [CustomerController::class, 'history'])->name('history');
     Route::post('/cart', [CustomerController::class, 'addToCart'])->name('cart.add');
+    Route::post('/cart/place', [CustomerController::class, 'placeCartOrders'])->name('cart.place');
+    Route::post('/cart/delete-selected', [CustomerController::class, 'deleteSelectedCart'])->name('cart.deleteSelected');
     Route::put('/cart/{item}', [CustomerController::class, 'updateCartItem'])->name('cart.update');
     Route::delete('/cart/{item}', [CustomerController::class, 'removeFromCart'])->name('cart.remove');
     Route::get('/checkout', [CustomerController::class, 'checkoutPage'])->name('checkout');

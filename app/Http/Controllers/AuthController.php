@@ -38,7 +38,13 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('home'));
+        $dest = match(Auth::user()->role) {
+            'admin'  => route('admin.dashboard'),
+            'worker' => route('worker.overview'),
+            default  => route('customer.shop'),
+        };
+
+        return redirect()->intended($dest);
     }
 
     public function showRegister()
@@ -50,15 +56,28 @@ class AuthController extends Controller
     {
         $data = $request->validate([
             'username' => ['required', 'string', 'min:3', 'max:30', 'alpha_dash', 'unique:users,username'],
-            'email'    => ['required', 'email', 'max:255', 'unique:users,email'],
+            'phone'    => ['nullable', 'string', 'max:30'],
+            'email'    => ['nullable', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ]);
+
+        $username = trim($data['username']);
+        $email = !empty($data['email']) ? $data['email'] : $username . '@mushfungai.local';
+        $suffix = 1;
+        while (User::where('email', $email)->exists()) {
+            $email = $username . ($suffix++) . '@mushfungai.local';
+        }
 
         // Self-registration always creates a customer. Admins can promote users later.
         $user = new User();
         $user->forceFill([
-            'name' => $data['username'], 'username' => $data['username'], 'email' => $data['email'],
-            'role' => 'customer', 'status' => 'active', 'password' => Hash::make($data['password']),
+            'name'     => $username,
+            'username' => $username,
+            'phone'    => $data['phone'] ?? null,
+            'email'    => $email,
+            'role'     => 'customer',
+            'status'   => 'active',
+            'password' => Hash::make($data['password']),
         ])->save();
 
         Auth::login($user);

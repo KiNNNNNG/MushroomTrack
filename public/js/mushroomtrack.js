@@ -180,12 +180,45 @@ document.addEventListener('DOMContentLoaded', () => {
       const price = parseFloat(row.dataset.price || 0);
       const priceEl = row.querySelector('.ci-price');
       const itemTotal = qty * price;
-      total += itemTotal;
       if (priceEl) priceEl.textContent = '₱' + itemTotal.toLocaleString('en-PH', { maximumFractionDigits: 2 });
+      const chk = row.querySelector('.cart-chk');
+      if (!chk || chk.checked) {
+        total += itemTotal;
+      }
     });
+    const totalEl = document.getElementById('cartTotal');
+    if (totalEl) totalEl.textContent = '₱' + total.toLocaleString('en-PH', { maximumFractionDigits: 2 });
     const btn = document.getElementById('cartCheckoutBtn');
     if (btn) btn.textContent = 'CHECKOUT (₱' + total.toLocaleString('en-PH', { maximumFractionDigits: 2 }) + ')';
   }
+
+  window.updateCartCheckboxTotal = function() {
+    updateCheckoutTotal();
+  };
+
+  // Delete selected cart items
+  window.cartDeleteSelected = async function() {
+    const checked = cartDlg.querySelectorAll('.cart-chk:checked');
+    if (!checked.length) {
+      alert('Please select at least one item to delete.');
+      return;
+    }
+    const confirmed = await window.appConfirm('Remove the selected items from your cart?', {
+      title: 'Remove items',
+      yes: 'REMOVE',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    for (const cb of checked) {
+      const row = cb.closest('.ci');
+      if (!row) continue;
+      await fetch(row.dataset.removeUrl, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': csrf(), 'X-HTTP-Method-Override': 'DELETE', 'Accept': 'application/json' },
+      });
+    }
+    reloadPage();
+  };
 
   cartDlg.addEventListener('click', async e => {
     // REMOVE button
@@ -240,3 +273,326 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+
+/* ==========================================================================
+   DISPLAY SETTINGS (Dark Mode, Font Size, Popover)
+   ========================================================================== */
+function initDisplaySettings() {
+  const theme = localStorage.getItem('mushfung_theme') || 'light';
+  const size = localStorage.getItem('mushfung_fontsize') || 'default';
+
+  applyTheme(theme);
+  applyFontSize(size);
+
+  document.querySelectorAll('input.themeToggleSwitchGlobal, #themeToggleSwitch').forEach(sw => {
+    sw.checked = (theme === 'dark');
+  });
+
+  document.querySelectorAll('.dsp-font-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.size === size);
+  });
+}
+
+function applyTheme(theme) {
+  if (theme === 'dark') {
+    document.documentElement.classList.add('dark-theme');
+  } else {
+    document.documentElement.classList.remove('dark-theme');
+  }
+}
+
+function applyFontSize(size) {
+  document.documentElement.classList.remove('font-small', 'font-default', 'font-large');
+  document.documentElement.classList.add('font-' + size);
+
+  if (size === 'small') {
+    document.documentElement.style.zoom = '88%';
+  } else if (size === 'large') {
+    document.documentElement.style.zoom = '114%';
+  } else {
+    document.documentElement.style.zoom = '100%';
+  }
+}
+
+window.toggleDarkTheme = function(isDark) {
+  const theme = isDark ? 'dark' : 'light';
+  localStorage.setItem('mushfung_theme', theme);
+  applyTheme(theme);
+
+  document.querySelectorAll('input.themeToggleSwitchGlobal, #themeToggleSwitch').forEach(sw => {
+    sw.checked = isDark;
+  });
+};
+
+window.setFontSize = function(size) {
+  localStorage.setItem('mushfung_fontsize', size);
+  applyFontSize(size);
+  document.querySelectorAll('.dsp-font-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.size === size);
+  });
+};
+
+window.resetDisplaySettings = function() {
+  localStorage.removeItem('mushfung_theme');
+  localStorage.removeItem('mushfung_fontsize');
+  applyTheme('light');
+  applyFontSize('default');
+
+  document.querySelectorAll('input.themeToggleSwitchGlobal, #themeToggleSwitch').forEach(sw => {
+    sw.checked = false;
+  });
+
+  document.querySelectorAll('.dsp-font-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.size === 'default');
+  });
+};
+
+window.toggleDisplaySettings = function(event) {
+  if (event) {
+    event.stopPropagation();
+    event.preventDefault();
+  }
+  const pop = document.getElementById('displaySettingsPopover');
+  if (pop) {
+    pop.classList.toggle('show');
+  }
+};
+
+window.togglePasswordVisibility = function(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  const isPw = inp.type === 'password';
+  inp.type = isPw ? 'text' : 'password';
+  btn.innerHTML = isPw
+    ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.9 17.9A10.4 10.4 0 0 1 12 19c-6 0-10-7-10-7a18.7 18.7 0 0 1 5-5.7M9.9 5.2A9.7 9.7 0 0 1 12 5c6 0 10 7 10 7a18.5 18.5 0 0 1-2.2 3.2M14.1 14.1a3 3 0 1 1-4.2-4.2M2 2l20 20"/></svg>'
+    : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="7" r="3"/></svg>';
+};
+
+document.addEventListener('click', (e) => {
+  const pop = document.getElementById('displaySettingsPopover');
+  const trig = document.getElementById('profileSettingsTrigger');
+  if (pop && pop.classList.contains('show')) {
+    if (!pop.contains(e.target) && (!trig || !trig.contains(e.target))) {
+      pop.classList.remove('show');
+    }
+  }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  initDisplaySettings();
+  const profTrigger = document.getElementById('profileSettingsTrigger');
+  if (profTrigger) {
+    profTrigger.onclick = function(e) {
+      e.stopPropagation();
+      e.preventDefault();
+      const pop = document.getElementById('displaySettingsPopover');
+      if (pop) pop.classList.toggle('show');
+    };
+  }
+});
+initDisplaySettings();
+
+/* ==========================================================================
+   PWA & SERVICE WORKER REGISTRATION
+   ========================================================================== */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => {
+        // SW registered successfully
+      })
+      .catch(err => {
+        console.warn('SW registration error:', err);
+      });
+  });
+}
+
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  document.querySelectorAll('.pwa-install-btn, [data-pwa-install]').forEach(el => {
+    el.style.display = 'inline-flex';
+  });
+});
+
+window.installMushFungApp = function() {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.then((choiceResult) => {
+      if (choiceResult.outcome === 'accepted') {
+        console.log('App install accepted');
+      }
+      deferredInstallPrompt = null;
+      document.querySelectorAll('.pwa-install-btn, [data-pwa-install]').forEach(el => {
+        el.style.display = 'none';
+      });
+    });
+  } else {
+    const isIos = /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
+    if (isIos) {
+      alert('To install MushFungAI on iOS:\n1. Tap the Share button in Safari (square with arrow up)\n2. Tap "Add to Home Screen"');
+    } else {
+      alert('To install MushFungAI as an app:\n• On Chrome/Edge (Desktop): Click the "Install" icon in the address bar (top right).\n• On Android: Tap the browser menu (⋮) and choose "Install app" or "Add to Home Screen".');
+    }
+  }
+};
+
+/* ==========================================================================
+   OFFLINE MONITORING SYNC ENGINE
+   ========================================================================== */
+const OFFLINE_CHECKS_KEY = 'mushfung_offline_checks';
+
+window.getOfflineChecks = function() {
+  try {
+    return JSON.parse(localStorage.getItem(OFFLINE_CHECKS_KEY) || '[]');
+  } catch(e) {
+    return [];
+  }
+};
+
+window.saveOfflineDailyCheck = function(check) {
+  const list = window.getOfflineChecks();
+  list.push(check);
+  localStorage.setItem(OFFLINE_CHECKS_KEY, JSON.stringify(list));
+  window.updateOnlineStatusUI();
+  window.showToastNotification('✓ Check saved offline! It will sync automatically when online.', 'warning');
+};
+
+window.removeOfflineCheck = function(index) {
+  const list = window.getOfflineChecks();
+  list.splice(index, 1);
+  localStorage.setItem(OFFLINE_CHECKS_KEY, JSON.stringify(list));
+  window.updateOnlineStatusUI();
+};
+
+window.clearOfflineChecks = function() {
+  localStorage.removeItem(OFFLINE_CHECKS_KEY);
+  window.updateOnlineStatusUI();
+};
+
+let _isSyncing = false;
+window.syncOfflineDailyChecks = async function() {
+  if (!navigator.onLine || _isSyncing) return;
+  const list = window.getOfflineChecks();
+  if (!list.length) return;
+
+  _isSyncing = true;
+  const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  const token = csrfMeta ? csrfMeta.content : '';
+
+  let syncedCount = 0;
+  const remaining = [];
+
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i];
+    try {
+      const response = await fetch(item.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': token,
+        },
+        body: JSON.stringify(item.data),
+      });
+
+      if (response.ok || response.redirected) {
+        syncedCount++;
+      } else {
+        remaining.push(item);
+      }
+    } catch(err) {
+      console.warn('Sync failed for item', item, err);
+      remaining.push(item);
+    }
+  }
+
+  localStorage.setItem(OFFLINE_CHECKS_KEY, JSON.stringify(remaining));
+  _isSyncing = false;
+  window.updateOnlineStatusUI();
+
+  if (syncedCount > 0) {
+    window.showToastNotification(`✓ Successfully synced ${syncedCount} offline daily check(s)!`, 'success');
+    if (window.location.pathname.includes('/worker/monitoring') || window.location.pathname.includes('/worker/history')) {
+      setTimeout(() => { window.location.reload(); }, 1200);
+    }
+  }
+};
+
+window.updateOnlineStatusUI = function() {
+  const isOnline = navigator.onLine;
+  const checks = window.getOfflineChecks();
+
+  const offlineBanner = document.getElementById('offlineNoticeBanner');
+  if (offlineBanner) {
+    offlineBanner.style.display = isOnline ? 'none' : 'flex';
+  }
+
+  const pendingBanner = document.getElementById('pendingSyncBanner');
+  const pendingCountEl = document.getElementById('pendingSyncCount');
+  if (pendingBanner) {
+    if (checks.length > 0) {
+      pendingBanner.style.display = 'flex';
+      if (pendingCountEl) pendingCountEl.textContent = checks.length;
+    } else {
+      pendingBanner.style.display = 'none';
+    }
+  }
+
+  document.querySelectorAll('.net-status-indicator').forEach(el => {
+    el.classList.toggle('is-offline', !isOnline);
+    el.setAttribute('title', isOnline ? 'Online' : 'Offline Mode');
+  });
+};
+
+window.showToastNotification = function(message, type = 'info') {
+  let toast = document.getElementById('mushfungAppToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'mushfungAppToast';
+    toast.style.cssText = 'position: fixed; bottom: 24px; right: 24px; z-index: 999999; max-width: 420px; padding: 14px 20px; border-radius: 10px; font-size: 13px; font-weight: 700; box-shadow: 0 10px 28px rgba(0,0,0,0.2); transition: all 0.3s ease; display: flex; align-items: center; gap: 10px; transform: translateY(100px); opacity: 0; pointer-events: none;';
+    document.body.appendChild(toast);
+  }
+
+  if (type === 'success') {
+    toast.style.background = '#205e46';
+    toast.style.color = '#ffffff';
+  } else if (type === 'warning') {
+    toast.style.background = '#8a5c18';
+    toast.style.color = '#ffffff';
+  } else {
+    toast.style.background = '#241c16';
+    toast.style.color = '#ffffff';
+  }
+
+  toast.textContent = message;
+  toast.style.transform = 'translateY(0)';
+  toast.style.opacity = '1';
+
+  clearTimeout(window._toastTimeout);
+  window._toastTimeout = setTimeout(() => {
+    toast.style.transform = 'translateY(100px)';
+    toast.style.opacity = '0';
+  }, 4000);
+};
+
+window.addEventListener('online', () => {
+  window.updateOnlineStatusUI();
+  window.showToastNotification('Internet connection restored. Syncing offline data...', 'info');
+  window.syncOfflineDailyChecks();
+});
+
+window.addEventListener('offline', () => {
+  window.updateOnlineStatusUI();
+  window.showToastNotification('You are now offline. Manual checks will be saved locally.', 'warning');
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  window.updateOnlineStatusUI();
+  if (navigator.onLine) {
+    window.syncOfflineDailyChecks();
+  }
+});
+

@@ -16,7 +16,9 @@ class CustomerController extends Controller
 {
     public function shop()
     {
-        return view('customer.shop', ['products' => Product::orderBy('id')->get()]);
+        return view('customer.shop', [
+            'products' => Product::orderBy('id')->get(),
+        ]);
     }
 
     public function orders(Request $request)
@@ -35,39 +37,165 @@ class CustomerController extends Controller
         ]);
     }
 
-    private function validated(Request $request): array
-    {
-        $data = $request->validate([
-            'product_id'  => ['required', 'exists:products,id'],
-            'quantity_kg' => ['required', 'numeric', 'min:0.1'],
-        ]);
-        $product = Product::findOrFail($data['product_id']);
-        abort_if($data['quantity_kg'] > $product->stock_kg, 422, "Only {$product->stock_kg}kg available.");
-
-        return [$product, (float) $data['quantity_kg']];
-    }
-
-    private function putInCart(Request $request): void
-    {
-        [$product, $qty] = $this->validated($request);
-        $item = CartItem::firstOrNew(['user_id' => $request->user()->id, 'product_id' => $product->id]);
-        $item->quantity_kg = min(($item->quantity_kg ?? 0) + $qty, $product->stock_kg);
-        $item->save();
-    }
-
     public function addToCart(Request $request)
     {
-        $this->putInCart($request);
+        $data = $request->validate([
+            'product_id'       => ['required', 'exists:products,id'],
+            'quantity_kg'      => ['required', 'numeric', 'min:0.1'],
+            'customer_name'    => ['nullable', 'string', 'max:255'],
+            'order_type'       => ['nullable', 'in:pickup,deliver'],
+            'delivery_address' => ['nullable', 'string', 'max:255'],
+        ]);
 
-        return back()->with('ok', 'Added to cart.');
+        $product = Product::findOrFail($data['product_id']);
+        $qty     = (float) $data['quantity_kg'];
+        abort_if($qty > $product->stock_kg, 422, "Only {$product->stock_kg}kg available.");
+
+        $fulfillment = ($data['order_type'] ?? 'pickup') === 'deliver' ? 'delivery' : 'pickup';
+        $address     = $fulfillment === 'delivery' ? ($data['delivery_address'] ?? null) : null;
+        $name        = trim($data['customer_name'] ?? '') ?: $request->user()->name;
+
+        $existing = CartItem::where('user_id', $request->user()->id)
+            ->where('product_id', $product->id)
+            ->where('fulfillment', $fulfillment)
+            ->where('delivery_address', $address)
+            ->first();
+
+        if ($existing) {
+            $existing->quantity_kg = min($existing->quantity_kg + $qty, $product->stock_kg);
+            if (!empty($name)) {
+                $existing->customer_name = $name;
+            }
+            $existing->save();
+        } else {
+            CartItem::create([
+                'user_id'          => $request->user()->id,
+                'product_id'       => $product->id,
+                'quantity_kg'      => min($qty, $product->stock_kg),
+                'customer_name'    => $name,
+                'fulfillment'      => $fulfillment,
+                'delivery_address' => $address,
+            ]);
+        }
+
+        return back()->with('ok', 'Item added to your cart.');
     }
 
-    /** "Buy now": puts the item in the cart and goes straight to the checkout page. */
+    /** "Buy now": places a direct order without going through the cart/checkout flow. */
     public function placeOrder(Request $request)
     {
-        $this->putInCart($request);
+        $u = $request->user();
 
-        return redirect()->route('customer.checkout');
+        $data = $request->validate([
+            'product_id'       => ['required', 'exists:products,id'],
+            'quantity_kg'      => ['required', 'numeric', 'min:0.1'],
+            'customer_name'    => ['nullable', 'string', 'max:255'],
+            'delivery_address' => ['nullable', 'string', 'max:255'],
+            'order_type'       => ['nullable', 'in:pickup,deliver'],
+        ]);
+
+        $product = Product::findOrFail($data['product_id']);
+        $qty     = (float) $data['quantity_kg'];
+        abort_if($qty > $product->stock_kg, 422, "Only {$product->stock_kg}kg available.");
+
+        $fulfillment = ($data['order_type'] ?? 'pickup') === 'deliver' ? 'delivery' : 'pickup';
+        $address     = $fulfillment === 'delivery' ? ($data['delivery_address'] ?? null) : null;
+        $name        = trim($data['customer_name'] ?? '') ?: $u->name;
+
+        $payment = DB::transaction(function () use ($u, $product, $qty, $fulfillment, $address, $name) {
+            $amount  = round($qty * $product->price, 2);
+            $payment = Payment::create([
+                'reference'    => Payment::newReference(),
+                'user_id'      => $u->id,
+                'method'       => 'cash',
+                'delivery_fee' => 0,
+                'amount'       => $amount,
+                'status'       => 'unpaid',
+            ]);
+            Order::place($u, $product, $qty, [
+                'payment_id'         => $payment->id,
+                'customer_name'      => $name,
+                'fulfillment'        => $fulfillment,
+                'fulfillment_status' => 'pending',
+                'delivery_address'   => $address,
+                'contact_phone'      => $u->phone,
+            ]);
+            return $payment;
+        });
+
+        if ($address && blank($u->address)) {
+            $u->forceFill(['address' => $address])->save();
+        }
+
+        ActivityLog::record('Buy Now', "Order placed for {$product->name} ({$qty}kg) – {$fulfillment}");
+        Notice::toAdmins('New order', "{$name} placed an order for {$product->name} ({$qty}kg) via Buy Now.", route('admin.store', ['tab' => 'orders'], false));
+
+        return redirect()->route('customer.orders')->with('ok', 'Order placed! You will pay in cash when you ' . ($fulfillment === 'delivery' ? 'receive it.' : 'pick it up.'));
+    }
+
+    public function placeCartOrders(Request $request)
+    {
+        $u = $request->user();
+        $selectedIds = (array) $request->input('cart_ids', []);
+
+        $query = CartItem::with('product')->where('user_id', $u->id);
+        if (!empty($selectedIds)) {
+            $query->whereIn('id', $selectedIds);
+        }
+        $items = $query->get();
+
+        if ($items->isEmpty()) {
+            return back()->withErrors('Please select at least one item to place order.');
+        }
+
+        foreach ($items as $i) {
+            if ($i->quantity_kg > $i->product->stock_kg) {
+                return back()->withErrors("Not enough stock for {$i->product->name}.");
+            }
+        }
+
+        $payment = DB::transaction(function () use ($items, $u) {
+            $subtotal = round($items->sum(fn ($i) => $i->quantity_kg * $i->product->price), 2);
+            $payment = Payment::create([
+                'reference'    => Payment::newReference(),
+                'user_id'      => $u->id,
+                'method'       => 'cash',
+                'delivery_fee' => 0,
+                'amount'       => $subtotal,
+                'status'       => 'unpaid',
+            ]);
+
+            foreach ($items as $i) {
+                Order::place($u, $i->product, (float) $i->quantity_kg, [
+                    'payment_id'         => $payment->id,
+                    'customer_name'      => $i->customer_name ?: $u->name,
+                    'fulfillment'        => $i->fulfillment ?: 'pickup',
+                    'fulfillment_status' => 'pending',
+                    'delivery_address'   => $i->fulfillment === 'delivery' ? $i->delivery_address : null,
+                    'contact_phone'      => $u->phone,
+                ]);
+            }
+
+            CartItem::whereIn('id', $items->pluck('id'))->delete();
+
+            return $payment;
+        });
+
+        ActivityLog::record('Cart Order', "{$payment->reference}: {$items->count()} item(s) ordered");
+        Notice::toAdmins('New order', "{$u->name} placed {$items->count()} order(s) from cart.", route('admin.store', ['tab' => 'orders'], false));
+
+        return redirect()->route('customer.orders')->with('ok', 'Order placed successfully! You will pay in cash upon receipt/pickup.');
+    }
+
+    public function deleteSelectedCart(Request $request)
+    {
+        $ids = (array) $request->input('cart_ids', []);
+        if (!empty($ids)) {
+            CartItem::where('user_id', $request->user()->id)->whereIn('id', $ids)->delete();
+            return back()->with('ok', 'Selected items removed from cart.');
+        }
+
+        return back()->withErrors('Please select at least one item to delete.');
     }
 
     public function removeFromCart(Request $request, CartItem $item)

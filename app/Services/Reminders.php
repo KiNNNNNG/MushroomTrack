@@ -22,16 +22,23 @@ class Reminders
 
         $checked  = MonitoringLog::whereDate('created_at', today())->pluck('batch_id')->all();
         $due      = $fruiting->reject(fn ($b) => in_array($b->id, $checked));
-        $ready    = $fruiting->filter(fn ($b) => $b->harvest_date && $b->harvest_date->lte(today()));
-        $sent     = 0;
+        $ready = $fruiting->filter(fn ($b) => $b->harvest_date && $b->harvest_date->lte(today()));
+        $soon  = $fruiting->filter(fn ($b) => $b->harvest_date && $b->harvest_date->gt(today()) && $b->harvest_date->lte(today()->addDays(3)));
+        $sent  = 0;
 
-        if ($due->isNotEmpty()) {
-            Notice::once($worker->id, 'Daily check due', self::sentence($due, 'no check today'), route('worker.monitoring', [], false), $external);
-            $sent++;
-        }
         if ($ready->isNotEmpty()) {
-            Notice::once($worker->id, 'Ready to harvest', self::sentence($ready, 'reached the estimated harvest date'), route('worker.harvest', [], false), $external);
-            $sent++;
+            foreach ($ready as $rb) {
+                Notice::once($worker->id, '🌿 Harvest time!', "{$rb->code} is ready to harvest today.", route('worker.harvest', [], false), $external);
+                $sent++;
+            }
+        }
+
+        if ($soon->isNotEmpty()) {
+            foreach ($soon as $sb) {
+                $days = today()->diffInDays($sb->harvest_date);
+                Notice::once($worker->id, "{$sb->code} harvest soon", "Est. harvest in {$days} day" . ($days > 1 ? 's' : '') . '.', route('worker.harvest', [], false), $external);
+                $sent++;
+            }
         }
 
         return $sent;

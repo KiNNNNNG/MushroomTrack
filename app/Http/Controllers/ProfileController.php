@@ -21,12 +21,26 @@ class ProfileController extends Controller
         $u = $request->user();
         $data = $request->validate([
             'name'     => ['required', 'string', 'max:100'],
-            'username' => ['required', 'string', 'min:3', 'max:30', 'alpha_dash', 'unique:users,username,'.$u->id],
-            'email'    => ['required', 'email', 'max:255', 'unique:users,email,'.$u->id],
+            'username' => ['nullable', 'string', 'min:3', 'max:30', 'alpha_dash', 'unique:users,username,'.$u->id],
+            'email'    => ['nullable', 'email', 'max:255', 'unique:users,email,'.$u->id],
             'phone'    => ['nullable', 'string', 'max:30'],
             'address'  => ['nullable', 'string', 'max:255'],
         ]);
-        $u->forceFill($data)->save();
+
+        $u->name = $data['name'];
+        if (!empty($data['username'])) {
+            $u->username = $data['username'];
+        }
+        if (!empty($data['email'])) {
+            $u->email = $data['email'];
+        }
+        if (array_key_exists('phone', $data)) {
+            $u->phone = $data['phone'];
+        }
+        if (array_key_exists('address', $data)) {
+            $u->address = $data['address'];
+        }
+        $u->save();
 
         // Texts need a real Philippine mobile number; switch SMS off instead of silently failing every time
         if ($u->notify_sms && ! Sms::normalize($u->phone)) {

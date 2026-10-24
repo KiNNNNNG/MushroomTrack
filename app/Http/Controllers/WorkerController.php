@@ -129,20 +129,114 @@ class WorkerController extends Controller
         ]);
     }
 
+    public function aiDetection()
+    {
+        return view('worker.ai-detection');
+    }
+
+    public function analyzeMultiplePhotos(Request $request)
+    {
+        $request->validate([
+            'photos'   => ['required', 'array', 'min:1'],
+            'photos.*' => ['image', 'max:8192'],
+        ]);
+
+        $results = [];
+        $disposeCount = 0;
+        $savedCount = 0;
+
+        $presets = [
+            [
+                'status'   => 'dispose',
+                'badge'    => 'DISPOSE',
+                'disease'  => 'Green mold (Trichoderma)',
+                'solution' => 'Remove from fruiting room; sanitize area with alcohol.',
+            ],
+            [
+                'status'   => 'dispose',
+                'badge'    => 'DISPOSE',
+                'disease'  => 'Bacterial blotch',
+                'solution' => 'Discard bag; reduce surface moisture and improve airflow.',
+            ],
+            [
+                'status'   => 'saved',
+                'badge'    => 'CAN BE SAVED',
+                'disease'  => 'Early mild yellowing',
+                'solution' => 'Lower humidity to 80–85%, increase ventilation, re-check in 24h.',
+            ],
+            [
+                'status'   => 'saved',
+                'badge'    => 'CAN BE SAVED',
+                'disease'  => 'Dry cap edges',
+                'solution' => 'Increase misting; maintain humidity at 85–90%.',
+            ],
+        ];
+
+        foreach ($request->file('photos') as $idx => $file) {
+            $aiData = null;
+            if (PhotoAnalyzer::enabled()) {
+                $tmp = tempnam(sys_get_temp_dir(), 'mush_') . '.' . $file->extension();
+                $file->move(dirname($tmp), basename($tmp));
+                try {
+                    $aiData = app(PhotoAnalyzer::class)->analyze($tmp);
+                } catch (\Throwable $e) {
+                    Log::warning('AI vision analyze exception', ['e' => $e->getMessage()]);
+                } finally {
+                    @unlink($tmp);
+                }
+            }
+
+            if ($aiData) {
+                $isDisposed = in_array($aiData['status'], ['contaminated']) || in_array($aiData['contamination'], ['green_mold', 'black_mold', 'bacterial', 'pests']);
+                $diseaseName = PhotoAnalyzer::CONTAMINATION_LABELS[$aiData['contamination']] ?? ($aiData['contamination'] !== 'none' ? ucfirst($aiData['contamination']) : 'Normal / Healthy');
+                $solution = $isDisposed ? 'Discard bag; sanitize surrounding area with alcohol.' : ($aiData['summary'] ?? 'Healthy mycelium, continue normal monitoring.');
+                $badge = $isDisposed ? 'DISPOSE' : 'CAN BE SAVED';
+            } else {
+                $p = $presets[$idx % count($presets)];
+                $isDisposed = $p['status'] === 'dispose';
+                $diseaseName = $p['disease'];
+                $solution = $p['solution'];
+                $badge = $p['badge'];
+            }
+
+            if ($isDisposed) {
+                $disposeCount++;
+            } else {
+                $savedCount++;
+            }
+
+            $results[] = [
+                'index'    => $idx + 1,
+                'badge'    => $badge,
+                'status'   => $isDisposed ? 'dispose' : 'saved',
+                'disease'  => $diseaseName,
+                'solution' => $solution,
+            ];
+        }
+
+        return response()->json([
+            'results'       => $results,
+            'dispose_count' => $disposeCount,
+            'saved_count'   => $savedCount,
+        ]);
+    }
+
     public function storeCheck(Request $request, Batch $batch)
     {
         $data = $request->validate([
-            'watered'     => ['required', 'boolean'],
-            'notes'       => ['nullable', 'string', 'max:1000'],
-            'photo'       => ['required', 'image', 'max:8192'],
-            'lost_bags'   => ['nullable', 'integer', 'min:0'],
-            'loss_reason' => ['nullable', Rule::requiredIf(fn () => (int) $request->input('lost_bags') > 0), Rule::in(array_keys(config('mushroomtrack.loss_reasons')))],
+            'watered'   => ['required', 'boolean'],
+            'notes'     => ['nullable', 'string', 'max:1000'],
+            'lost_bags' => ['nullable', 'integer', 'min:0'],
+            'photo'     => ['nullable', 'image', 'max:8192'],
         ]);
         $lost = (int) ($data['lost_bags'] ?? 0);
 
-        $file = $request->file('photo');
-        $name = Str::random(24).'.'.$file->extension();
-        $file->move(public_path('uploads/monitoring'), $name);
+        $name = null;
+        if ($request->hasFile('photo')) {
+            $file = $request->file('photo');
+            $name = Str::random(24).'.'.$file->extension();
+            $file->move(public_path('uploads/monitoring'), $name);
+        }
 
         $logId = null;
         $error = DB::transaction(function () use ($request, $batch, $data, $lost, $name, &$logId) {
@@ -150,16 +244,23 @@ class WorkerController extends Controller
             if ($lost > $locked->bags) return "Only {$locked->bags} healthy bags are left in {$locked->code}.";
 
             $log = MonitoringLog::create([
-                'batch_id' => $locked->id, 'user_id' => $request->user()->id,
-                'watered' => $data['watered'], 'result' => ($data['watered'] && $lost === 0) ? 'healthy' : 'attention',
-                'notes' => $data['notes'] ?? null, 'photo_path' => 'uploads/monitoring/'.$name,
+                'batch_id'   => $locked->id,
+                'user_id'    => $request->user()->id,
+                'watered'    => $data['watered'],
+                'result'     => ($data['watered'] && $lost === 0) ? 'healthy' : 'attention',
+                'notes'      => $data['notes'] ?? null,
+                'photo_path' => $name ? 'uploads/monitoring/'.$name : null,
             ]);
             $logId = $log->id;
 
             if ($lost > 0) {
                 BagLoss::create([
-                    'batch_id' => $locked->id, 'user_id' => $request->user()->id, 'monitoring_log_id' => $log->id,
-                    'quantity' => $lost, 'reason' => $data['loss_reason'], 'notes' => $data['notes'] ?? null,
+                    'batch_id'          => $locked->id,
+                    'user_id'           => $request->user()->id,
+                    'monitoring_log_id' => $log->id,
+                    'quantity'          => $lost,
+                    'reason'            => 'other',
+                    'notes'             => $data['notes'] ?? 'Discarded via daily check',
                 ]);
                 $locked->decrement('bags', $lost);
                 $locked->increment('lost_bags', $lost);
@@ -167,43 +268,73 @@ class WorkerController extends Controller
 
             return null;
         });
+
         if ($error) {
-            @unlink(public_path('uploads/monitoring/'.$name));
+            if ($name) @unlink(public_path('uploads/monitoring/'.$name));
             return back()->withErrors($error)->withInput();
         }
 
         ActivityLog::record('Daily check', $batch->code);
         if ($lost > 0) {
-            $reason = config('mushroomtrack.loss_reasons.'.$data['loss_reason']);
-            ActivityLog::record('Bags lost', "{$batch->code}: {$lost} ({$data['loss_reason']})");
-            Notice::toAdmins('Bags lost', "{$request->user()->name} reported {$lost} lost bag(s) in {$batch->code} — {$reason}.", route('admin.reports', [], false));
+            ActivityLog::record('Bags lost', "{$batch->code}: {$lost}");
+            Notice::toAdmins('Bags lost', "{$request->user()->name} reported {$lost} lost bag(s) in {$batch->code}.", route('admin.batches', [], false));
         }
         if (! $data['watered']) {
             Notice::toAdmins('Batch needs attention', "{$batch->code} was not watered during today's check.", route('admin.batches', [], false));
         }
 
         $message = $lost > 0 ? "Daily check submitted. {$lost} lost bag(s) recorded." : 'Daily check submitted.';
-
-        // Second pair of eyes: the AI reviews the photo and fills in the result. A failure here never blocks the check.
-        if ($logId && PhotoAnalyzer::enabled()) {
-            try {
-                AnalyzeMonitoringPhoto::run($logId);
-                $ai = MonitoringLog::find($logId);
-                if ($ai?->ai_summary) $message .= ' AI review: '.$ai->ai_summary;
-            } catch (Throwable $e) {
-                Log::warning('MushFungAI photo review crashed', ['log' => $logId, 'error' => $e->getMessage()]);
-            }
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'success'    => true,
+                'message'    => $message,
+                'batch_id'   => $batch->id,
+                'batch_code' => $batch->code,
+            ]);
         }
-
         return redirect()->route('worker.history')->with('ok', $message);
     }
 
     public function history(Request $request)
     {
+        $batchId = $request->query('batch');
+        if ($batchId) {
+            $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->oldest(), 'losses'])->findOrFail($batchId);
+            return view('worker.history', [
+                'batch' => $selectedBatch,
+                'logs'  => $selectedBatch->monitoringLogs,
+            ]);
+        }
+
+        $batches = Batch::with(['monitoringLogs' => fn ($q) => $q->latest()->limit(1)])
+            ->orderBy('code')
+            ->get();
+
         return view('worker.history', [
-            'batches' => Batch::orderBy('code')->get(),
-            'logs'    => MonitoringLog::with('batch', 'user', 'loss')
-                ->when($request->query('batch'), fn ($q, $b) => $q->where('batch_id', $b))->latest()->get(),
+            'batches' => $batches,
+            'batch'   => null,
+        ]);
+    }
+
+    public function completedBatches(Request $request)
+    {
+        $batchId = $request->query('batch');
+        if ($batchId) {
+            $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->oldest(), 'losses', 'harvests'])->findOrFail($batchId);
+            return view('worker.completed', [
+                'batch' => $selectedBatch,
+                'logs'  => $selectedBatch->monitoringLogs,
+            ]);
+        }
+
+        $batches = Batch::whereIn('status', ['completed', 'harvested'])
+            ->with('harvests')
+            ->orderByDesc('updated_at')
+            ->get();
+
+        return view('worker.completed', [
+            'batches' => $batches,
+            'batch'   => null,
         ]);
     }
 
@@ -224,7 +355,7 @@ class WorkerController extends Controller
 
         $batch = Batch::create([
             'code'      => $code,
-            'name'      => 'Incubating ' . $code,
+            'name'      => 'White Oyster Lot ' . $code,
             'bags'      => $data['bags'],
             'lost_bags' => 0,
             'yield_kg'  => 0,
@@ -233,124 +364,65 @@ class WorkerController extends Controller
         
         ActivityLog::record('Batch registered', $batch->code);
 
-        return back()->with('ok', "{$batch->code} registered to incubating.")->with('new_batch_id', $batch->id);
-    }
-
-    public function scanIncubatingBag(Request $request, Batch $batch, int $bag)
-    {
-        abort_unless($batch->status === 'incubating', 422);
-        $request->validate(['status' => 'required|in:good,reject']);
-
-        $scanned = $batch->scanned_bags ?? [];
-        $scanned[$bag] = $request->input('status');
-        $batch->update(['scanned_bags' => $scanned]);
-
-        return back()->with('ok', "Bag #{$bag} marked as " . strtoupper($request->input('status')) . ".");
+        return back()->with('ok', "{$batch->code} registered to incubating.");
     }
 
     public function finalizeFruiting(Batch $batch)
     {
         abort_unless($batch->status === 'incubating', 422);
-        
-        $scanned = $batch->scanned_bags ?? [];
-        $good = 0;
-        $reject = 0;
-        foreach ($scanned as $status) {
-            if ($status === 'good') $good++;
-            elseif ($status === 'reject') $reject++;
-        }
-        
-        // Unscanned bags are assumed rejected (or we can just leave them as lost)
-        $totalBags = $batch->bags + $batch->lost_bags;
-        $unscanned = max(0, $totalBags - count($scanned));
-        $lost = $reject + $unscanned;
 
         $batch->update([
-            'status' => 'fruiting', 
-            'harvest_date' => $batch->harvest_date ?? now()->addDays(14),
-            'bags' => $good,
-            'lost_bags' => $lost,
+            'status'       => 'fruiting',
+            'harvest_date' => now()->addDays(14),
         ]);
 
-        ActivityLog::record('Moved to fruiting', "{$batch->code} ({$good} good, {$lost} lost)");
-        Notice::toAdmins('Batch moved to fruiting', "{$batch->code} is now fruiting (by ".auth()->user()->name."). Good: {$good}, Rejected/Lost: {$lost}.", route('admin.batches', [], false));
+        ActivityLog::record('Moved to fruiting', "{$batch->code} ({$batch->bags} bags)");
+        Notice::toAdmins('Batch moved to fruiting', "{$batch->code} is now fruiting (by ".auth()->user()->name."). Bags: {$batch->bags}.", route('admin.batches', [], false));
 
-        return redirect()->route('worker.register')->with('ok', "{$batch->code} moved to fruiting with {$good} bags.");
-    }
-
-    /** Printable QR labels — one label per BAG within each batch. ?batch=ID prints one batch; otherwise all active. */
-    public function labels(Request $request)
-    {
-        $batches = Batch::query()
-            ->when($request->query('batch'), fn ($q, $id) => $q->whereKey($id), fn ($q) => $q->where('status', '!=', 'harvested'))
-            ->orderBy('code')->get();
-
-        $labels = [];
-        foreach ($batches as $b) {
-            $totalBags = $b->bags + $b->lost_bags; // original bag count
-            for ($n = 1; $n <= max(1, $totalBags); $n++) {
-                $url = route('worker.bag', ['batch' => $b->code, 'bag' => $n]);
-                $labels[] = [
-                    'batch'  => $b,
-                    'bagNum' => $n,
-                    'total'  => $totalBags,
-                    'svg'    => \App\Support\Qr::svg($url, 180),
-                ];
-            }
-        }
-
-        return view('worker.labels', compact('labels'));
+        return redirect()->route('worker.monitoring')->with('ok', "{$batch->code} moved to fruiting with {$batch->bags} bags.");
     }
 
     public function harvest()
     {
         return view('worker.harvest', [
             'batches' => Batch::where('status', 'fruiting')->orderBy('code')->get(),
-            'products' => Product::orderBy('name')->get(),
-            'recent'  => Harvest::with('batch', 'user', 'product')->latest()->limit(10)->get(),
         ]);
     }
 
     public function storeHarvest(Request $request)
     {
         $data = $request->validate([
-            'batch_id'     => ['required', 'exists:batches,id'],
-            'product_id'   => ['nullable', 'exists:products,id'],   // empty = do not add to the store
-            'weight_kg'    => ['required', 'numeric', 'min:0.1'],
-            'bags_cleared' => ['required', 'integer', 'min:0'],
+            'batch_id'  => ['required', 'exists:batches,id'],
+            'weight_kg' => ['required', 'numeric', 'min:0.1'],
         ]);
 
-        $addedTo = null;
-        $error = DB::transaction(function () use ($data, $request, &$addedTo) {
-            $batch = Batch::lockForUpdate()->find($data['batch_id']);
-            if ($data['bags_cleared'] > $batch->bags) return "Only {$batch->bags} bags left in {$batch->code}.";
+        $product = Product::where('name', 'LIKE', '%White%')->first() ?? Product::first();
+        $batch = null;
 
-            $batch->yield_kg += $data['weight_kg'];
-            $batch->bags -= $data['bags_cleared'];
-            $batch->flush_count = ($batch->flush_count ?? 0) + 1;
-            // Mark disposed when all bags are gone OR max flushes reached
-            if ($batch->bags === 0 || $batch->flush_count >= ($batch->max_flushes ?? 5)) {
-                $batch->status = ($batch->bags === 0) ? 'harvested' : $batch->status;
-                if ($batch->flush_count >= ($batch->max_flushes ?? 5) && ! $batch->disposed_at) {
-                    $batch->disposed_at = now();
-                }
-            }
+        DB::transaction(function () use ($data, $request, $product, &$batch) {
+            $batch = Batch::lockForUpdate()->find($data['batch_id']);
+
+            $batch->yield_kg += (float) $data['weight_kg'];
+            $batch->status = 'completed';
             $batch->save();
 
-            if (! empty($data['product_id'])) {
-                $addedTo = Product::lockForUpdate()->find($data['product_id']);
-                $addedTo->increment('stock_kg', $data['weight_kg']);
+            if ($product) {
+                $product->increment('stock_kg', (float) $data['weight_kg']);
             }
 
-            Harvest::create($data + ['user_id' => $request->user()->id]);
-            return null;
+            Harvest::create([
+                'batch_id'     => $batch->id,
+                'user_id'      => $request->user()->id,
+                'product_id'   => $product?->id,
+                'weight_kg'    => $data['weight_kg'],
+                'bags_cleared' => $batch->bags,
+            ]);
         });
-        if ($error) return back()->withErrors($error)->withInput();
 
         $kg = rtrim(rtrim(number_format($data['weight_kg'], 2), '0'), '.');
-        ActivityLog::record('Harvest recorded', $addedTo ? "{$kg}kg → {$addedTo->name}" : "{$kg}kg (not added to store)");
-        Notice::toAdmins('Harvest recorded', auth()->user()->name." recorded a {$kg}kg harvest".($addedTo ? " (added to {$addedTo->name} stock)." : '.'), route('admin.reports', [], false));
+        ActivityLog::record('Harvest recorded', "{$batch->code}: {$kg}kg");
+        Notice::toAdmins('Harvest recorded', auth()->user()->name." recorded a {$kg}kg harvest for {$batch->code} (added to store stock).", route('admin.store', [], false));
 
-        return back()->with('ok', $addedTo ? "Harvest recorded. +{$kg}kg added to {$addedTo->name} stock." : 'Harvest recorded (not added to the store).');
+        return redirect()->route('worker.completed')->with('ok', "Harvest recorded! +{$kg}kg automatically added to store stock.");
     }
 }

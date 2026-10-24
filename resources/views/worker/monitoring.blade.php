@@ -1,344 +1,446 @@
 @extends('layouts.admin')
 @section('content')
 
-{{-- ── Top bar: QR Camera scan button ─────────────────────────── --}}
-<div class="mon-hd">
-  <span class="mon-title">Fruiting Batches</span>
-  <button type="button" class="btn" id="qrScanBtn">
-    <x-icon n="camera" s="17" /> SCAN QR CODE
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+  <div>
+    <h1 style="font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: #241c16; margin: 0 0 4px;">Fruiting Batches</h1>
+    <p style="font-size: 14px; color: #7c726a; margin: 0;">Active batches under daily monitoring.</p>
+  </div>
+  <a href="{{ route('worker.ai-detection') }}"
+    onclick="if(!navigator.onLine){event.preventDefault();alert('AI Detection requires an active internet connection. Offline mode is enabled for manual fruiting checks.');}"
+    style="background: #205e46; color: #ffffff; font-size: 13px; font-weight: 700; border-radius: 8px; padding: 10px 18px; text-decoration: none; display: inline-flex; align-items: center; gap: 7px; letter-spacing: 0.3px; transition: background 0.15s ease;"
+    onmouseover="this.style.background='#184a36'" onmouseout="this.style.background='#205e46'">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    AI DETECTION
+  </a>
+</div>
+
+{{-- Offline Banner --}}
+<div id="offlineNoticeBanner" style="display: none; background: #fffbeb; border: 1px solid #fef3c7; color: #92400e; padding: 14px 18px; border-radius: 12px; margin-bottom: 20px; font-size: 13px; font-weight: 600; align-items: center; justify-content: space-between;">
+  <div style="display: flex; align-items: center; gap: 10px;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+    <div>
+      <span style="font-weight: 800; color: #78350f;">OFFLINE MODE:</span>
+      <span>You can record daily fruiting checks offline. Submissions will be safely saved on your device and automatically synced once an internet connection is re-established. (AI vision requires internet).</span>
+    </div>
+  </div>
+</div>
+
+{{-- Pending Sync Banner --}}
+<div id="pendingSyncBanner" style="display: none; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 12px 18px; border-radius: 12px; margin-bottom: 20px; font-size: 13px; font-weight: 600; align-items: center; justify-content: space-between;">
+  <div style="display: flex; align-items: center; gap: 10px;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <span><strong id="pendingSyncCount">0</strong> offline check(s) pending sync.</span>
+  </div>
+  <button type="button" onclick="syncOfflineDailyChecks()" style="background: #2563eb; color: #ffffff; border: none; border-radius: 6px; padding: 7px 16px; font-size: 12px; font-weight: 700; cursor: pointer;">
+    SYNC NOW
   </button>
 </div>
 
-{{-- ── QR scanner overlay ───────────────────────────────────────── --}}
-<dialog id="qrDlg" class="qr-dlg">
-  <button type="button" class="cdx" onclick="this.closest('dialog').close()" aria-label="Close">✕</button>
-  <h3 style="margin-bottom:14px">Point at a batch QR code</h3>
-  <div class="qr-viewport">
-    <video id="qrVideo" autoplay playsinline muted></video>
-    <div class="qr-frame"></div>
-  </div>
-  <p id="qrStatus" class="qr-status">Initialising camera…</p>
-  <button type="button" class="btn ghost" style="width:100%;margin-top:18px" onclick="stopQr();this.closest('dialog').close()">CANCEL</button>
-</dialog>
-
-{{-- ── Batch cards ─────────────────────────────────────────────── --}}
-<div class="mgrid">
+{{-- Fruiting Batches Cards Grid --}}
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">
   @forelse ($batches as $b)
-    @php
-      $fmt = fn ($n) => rtrim(rtrim(number_format((float)$n, 2), '0'), '.');
-    @endphp
-    <div class="card mc" style="padding: 16px;">
-      <div style="display: flex; gap: 16px; margin-bottom: 16px;">
-        <div style="width: 80px; height: 80px; border-radius: 8px; background: #e9e4de url('https://images.unsplash.com/photo-1590059345229-3733215be132?auto=format&fit=crop&q=80&w=200') center/cover; flex-shrink: 0;"></div>
-        <div style="flex: 1;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
-            <b style="font-size: 16px; color: var(--ink);">{{ $b->code }}</b>
-            <span style="background: #ecfdf5; color: #059669; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 12px; letter-spacing: 0.5px;">FRUITING</span>
-          </div>
-          <div style="color: var(--muted); font-size: 13px; margin-bottom: 8px;">{{ $b->name }}</div>
-          
-          <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #475569;">
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <x-icon n="batches" s="14" /> <span>Active Bags: <strong style="color:var(--ink)">{{ $b->bags }} units</strong></span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-              <span>Flush: <strong style="color:var(--ink)">{{ $b->flush_count }}/{{ $b->max_flushes ?? 5 }}</strong> @if(!$b->flushes_exhausted)({{ $b->flushes_remaining }} left)@endif</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <x-icon n="history" s="14" /> <span>Est. Harvest: <strong style="color:var(--ink)">{{ optional($b->harvest_date)->format('Y-m-d') ?? '—' }}</strong></span>
-            </div>
-          </div>
-        </div>
+    <div style="background: #ffffff; border: 1px solid #ece6dd; border-radius: 16px; padding: 22px 24px; box-shadow: 0 4px 18px rgba(40,30,20, 0.03); display: flex; flex-direction: column;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <span style="font-size: 18px; font-weight: 800; color: #241c16;">{{ $b->code }}</span>
+        <span style="background: #dcf3eb; color: #2d7862; font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 12px; letter-spacing: 0.4px;">FRUITING</span>
       </div>
 
-      <button class="btn" style="width: 100%; justify-content: center; background: var(--green); color: #fff;" data-check
-              data-action="{{ route('worker.monitoring.store', $b) }}"
-              data-code="{{ $b->code }}"
-              data-name="{{ $b->name }}"
-              data-bags="{{ $b->bags }}"
-              data-harvest="{{ optional($b->harvest_date)->format('Y-m-d') ?? '' }}">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+      <div style="font-size: 14px; color: #7c726a; margin-bottom: 16px;">{{ $b->name }}</div>
+
+      <div style="font-size: 13px; color: #756a60; margin-bottom: 6px;">
+        Active Bags: <strong style="color: #241c16;">{{ $b->bags }} units</strong>
+      </div>
+      <div style="font-size: 13px; color: #756a60; margin-bottom: 22px;">
+        Est. Harvest: <strong style="color: #241c16;">{{ optional($b->harvest_date)->format('Y-m-d') ?? '—' }}</strong>
+      </div>
+
+      <button type="button"
+        onclick="openDailyCheck({{ $b->id }}, '{{ addslashes($b->code) }}', '{{ addslashes($b->name) }}', {{ $b->bags }})"
+        style="margin-top: auto; width: 100%; height: 42px; background: #205e46; color: #ffffff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; letter-spacing: 0.4px; transition: background 0.15s ease;"
+        onmouseover="this.style.background='#184a36'" onmouseout="this.style.background='#205e46'">
         START DAILY CHECK
       </button>
     </div>
   @empty
-    <div class="empty" style="padding:30px; text-align:center;">No batches are fruiting right now.</div>
+    <div style="grid-column: 1 / -1; padding: 60px 0; text-align: center; color: #8a7f74; background: #ffffff; border-radius: 16px; border: 1px solid #ece6dd;">
+      No fruiting batches currently in cultivation.
+    </div>
   @endforelse
 </div>
 
+{{-- Modal 1: Daily Check Initial Form --}}
+<dialog id="dailyCheckModal" style="width: min(480px, 95vw); border-radius: 20px; border: none; padding: 0; box-shadow: 0 16px 48px rgba(0,0,0, 0.22); background: #ffffff;">
+  <div style="padding: 28px 30px;">
+    <h3 style="font-size: 20px; font-weight: 800; color: #241c16; margin: 0 0 4px;">Daily Check</h3>
+    <p id="checkModalBatchInfo" style="font-size: 13px; color: #7c726a; margin: 0 0 20px;">BATCH-001 · White Oyster Premium Lot</p>
 
-{{-- ── START DAILY CHECK dialog ───────────────────────────────────────── --}}
-<dialog id="checkDlg" class="cd">
-  <button type="button" class="cdx" onclick="this.closest('dialog').close()" aria-label="Close">✕</button>
-  <h3 id="checkTitle"></h3>
-
-  <form method="POST" enctype="multipart/form-data"
-        data-confirm="Submit today's check for this batch?"
-        data-title="Submit check" data-yes="SUBMIT">@csrf
-
-    <div class="bx"><span>System Time</span><span id="sysTime" style="font-family:'Courier New',monospace;font-size:12px"></span></div>
-
-    {{-- Watered? --}}
-    <div class="bx w"><span>Watered Batch?</span>
-      <span>
-        <label><input type="radio" name="watered" value="1" checked> Yes</label> &nbsp;&nbsp;
-        <label><input type="radio" name="watered" value="0"> No</label>
-      </span>
-    </div>
-
-    {{-- Condition buttons --}}
-    <div class="bx w" style="flex-direction:column;align-items:flex-start;gap:12px">
-      <span style="font-weight:700;font-size:13px">Mushroom Condition</span>
-      <div style="display:flex;gap:12px;width:100%">
-        <button type="button" class="cond-btn cond-good" data-cond="good">
-          ✅ GOOD
+    {{-- Watered Toggle --}}
+    <div style="margin-bottom: 20px;">
+      <label style="display: block; font-size: 11px; font-weight: 700; color: #8a7f74; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px;">WATERED BATCH?</label>
+      <div style="display: flex; gap: 10px;">
+        <button type="button" id="btnWateredYes" onclick="setWatered(true)"
+          style="flex: 1; height: 44px; border-radius: 8px; border: none; background: #205e46; color: #ffffff; font-weight: 700; font-size: 13px; cursor: pointer;">
+          YES
         </button>
-        <button type="button" class="cond-btn cond-defect" data-cond="defect">
-          ⚠️ DEFECT
+        <button type="button" id="btnWateredNo" onclick="setWatered(false)"
+          style="flex: 1; height: 44px; border-radius: 8px; border: 1px solid #e5ded4; background: #fcfbfa; color: #332921; font-weight: 700; font-size: 13px; cursor: pointer;">
+          NO
         </button>
       </div>
-      <input type="hidden" name="condition" id="conditionInput" value="">
-      <span id="conditionLabel" class="cond-label" hidden></span>
     </div>
 
-    {{-- Lost bags --}}
-    <div class="bx w"><span>Report lost bags <small style="font-weight:400;color:#64748b">(optional)</small></span>
-      <span><input type="number" name="lost_bags" id="lostBags" min="0" value="0" style="width:80px;padding:8px;border:1px solid var(--line);border-radius:8px"> bags</span>
-    </div>
-    <div class="bx w" id="lossReasonRow" hidden><span>Reason</span>
-      <select name="loss_reason" id="lossReason" style="padding:8px;border:1px solid var(--line);border-radius:8px;max-width:300px">
-        <option value="">Select a reason…</option>
-        @foreach (config('mushroomtrack.loss_reasons') as $key => $label)
-          <option value="{{ $key }}">{{ $label }}</option>
-        @endforeach
-      </select>
+    {{-- Upload Photos (Multiple) --}}
+    <div style="margin-bottom: 24px;">
+      <label style="display: block; font-size: 11px; font-weight: 700; color: #8a7f74; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px;">UPLOAD PHOTOS OF BAGS TO DISPOSE (MULTIPLE)</label>
+      
+      <input type="file" id="batchPhotosInput" multiple accept="image/*" style="display: none;" onchange="handlePhotosSelected(this)">
+      
+      <div onclick="document.getElementById('batchPhotosInput').click()"
+        style="height: 76px; border: 1.5px dashed #d5cebf; border-radius: 10px; background: #fcfbfa; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; color: #756a60; font-size: 13px; font-weight: 600; transition: border-color 0.15s ease;"
+        onmouseover="this.style.borderColor='#205e46'" onmouseout="this.style.borderColor='#d5cebf'">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span>&uarr; Tap to upload photos</span>
+      </div>
+
+      {{-- Preview Thumbnails --}}
+      <div id="photosGallery" style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px;"></div>
     </div>
 
-    {{-- Photo capture --}}
-    <div class="pl">
-      <span class="label" style="font-size:11px">Capture or upload photo</span>
-      <span>
-        <button type="button" class="mb" data-pick="capture"><x-icon n="camera" s="16" />CAPTURE</button>
-        <button type="button" class="mb" data-pick="upload"><x-icon n="upload" s="16" />UPLOAD</button>
-      </span>
-    </div>
-    <input type="file" name="photo" accept="image/*" hidden>
-    <div class="pg" id="photoGrid"></div>
-
-    {{-- AI scan button (hidden until photo chosen) --}}
-    <div id="aiScanRow" hidden style="margin-bottom:18px">
-      <button type="button" id="aiScanBtn" class="btn" style="width:100%;justify-content:center">
-        <x-icon n="camera" s="16" /> AI SCAN PHOTO
+    {{-- Modal Footer --}}
+    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+      <button type="button" onclick="document.getElementById('dailyCheckModal').close()"
+        style="padding: 10px 22px; height: 44px; border-radius: 8px; border: 1px solid #dcd5c9; background: #ffffff; color: #332921; font-weight: 700; font-size: 13px; cursor: pointer;">
+        CANCEL
+      </button>
+      <button type="button" id="detectBtn" onclick="runAiDetection()"
+        style="padding: 10px 24px; height: 44px; border-radius: 8px; border: none; background: #205e46; color: #ffffff; font-weight: 700; font-size: 13px; cursor: pointer; letter-spacing: 0.3px;">
+        PROCEED TO CHECK
       </button>
     </div>
-    {{-- AI result card --}}
-    <div id="aiResult" hidden class="ai-card">
-      <div class="ai-card-hd">
-        <span class="ai-badge" id="aiBadge"></span>
-        <span id="aiConfidence" style="font-size:11px;color:var(--muted)"></span>
-        <span id="aiDays" style="font-size:12px;font-weight:700;color:var(--gold)"></span>
-      </div>
-      <div id="aiStageRow" style="font-size:12px;color:#52617d;margin-bottom:6px"></div>
-      <p id="aiSummary" style="font-size:13px;line-height:1.6;margin:0"></p>
-      <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Notes auto-filled below. Edit freely before submitting.</p>
+  </div>
+</dialog>
+
+{{-- Modal 2: AI Detection Result (Matching mockup) --}}
+<dialog id="aiResultModal" style="width: min(520px, 95vw); border-radius: 20px; border: none; padding: 0; box-shadow: 0 16px 48px rgba(0,0,0, 0.22); background: #ffffff;">
+  <div style="padding: 28px 30px;">
+    <h3 style="font-size: 20px; font-weight: 800; color: #241c16; margin: 0 0 4px;">AI Detection Result</h3>
+    <p id="aiResultSubtitle" style="font-size: 13px; color: #7c726a; margin: 0 0 20px;">AI analysis of uploaded photos</p>
+
+    {{-- Cards List --}}
+    <div id="aiResultsList" style="max-height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; padding-right: 4px;"></div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #ece6dd; padding-top: 18px;">
+      <div id="aiSummaryFooter" style="font-size: 13px; font-weight: 700; color: #241c16;"></div>
+      <button type="button" onclick="finishAiDetection()"
+        style="padding: 10px 28px; height: 42px; border-radius: 8px; border: none; background: #205e46; color: #ffffff; font-weight: 700; font-size: 13px; cursor: pointer; letter-spacing: 0.3px;">
+        DONE
+      </button>
     </div>
-    <input type="hidden" name="ai_prescan" id="aiPrescan" value="0">
+  </div>
+</dialog>
 
-    {{-- Notes --}}
-    <div class="label" style="font-size:11px;margin-bottom:10px">Farmer notes</div>
-    <textarea name="notes" id="checkNotes" placeholder="Describe anything unusual…"></textarea>
+{{-- Modal 3: Final Check Submission --}}
+<dialog id="finalCheckModal" style="width: min(480px, 95vw); border-radius: 20px; border: none; padding: 0; box-shadow: 0 16px 48px rgba(0,0,0, 0.22); background: #ffffff;">
+  <div style="padding: 28px 30px;">
+    <h3 style="font-size: 20px; font-weight: 800; color: #241c16; margin: 0 0 4px;">Daily Check</h3>
+    <p id="finalBatchSubtitle" style="font-size: 13px; color: #7c726a; margin: 0 0 20px;">BATCH-001 · White Oyster Premium Lot</p>
 
-    <button class="sub" disabled>SUBMIT CHECK</button>
-  </form>
+    <form id="finalCheckForm" method="POST">
+      @csrf
+      <input type="hidden" name="watered" id="finalWateredInput" value="1">
+
+      <div style="margin-bottom: 18px;">
+        <label style="display: block; font-size: 11px; font-weight: 700; color: #8a7f74; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px;">WATERED BATCH?</label>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" id="finalBtnWateredYes" onclick="setFinalWatered(true)"
+            style="flex: 1; height: 44px; border-radius: 8px; border: none; background: #205e46; color: #ffffff; font-weight: 700; font-size: 13px; cursor: pointer;">
+            YES
+          </button>
+          <button type="button" id="finalBtnWateredNo" onclick="setFinalWatered(false)"
+            style="flex: 1; height: 44px; border-radius: 8px; border: 1px solid #e5ded4; background: #fcfbfa; color: #332921; font-weight: 700; font-size: 13px; cursor: pointer;">
+            NO
+          </button>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 18px;">
+        <label style="display: block; font-size: 11px; font-weight: 700; color: #8a7f74; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px;">LOST BAGS</label>
+        <input type="text" id="finalLostDisplay" readonly
+          style="width: 100%; height: 44px; border: 1px solid #e5ded4; border-radius: 8px; padding: 0 14px; font-size: 14px; font-weight: 600; color: #cf3b3b; background: #fcfbfa; outline: none; box-sizing: border-box;">
+        <input type="hidden" name="lost_bags" id="finalLostBagsInput" value="0">
+      </div>
+
+      <div style="margin-bottom: 24px;">
+        <label style="display: block; font-size: 11px; font-weight: 700; color: #8a7f74; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px;">FARMER NOTES (OPTIONAL)</label>
+        <textarea name="notes" id="finalNotesInput" rows="3" placeholder="Green mold spotted on left rack. Cleaned the area."
+          style="width: 100%; border: 1px solid #e5ded4; border-radius: 8px; padding: 10px 14px; font-size: 14px; color: #241c16; background: #fcfbfa; outline: none; box-sizing: border-box; resize: vertical;"></textarea>
+      </div>
+
+      <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button type="button" onclick="document.getElementById('finalCheckModal').close()"
+          style="padding: 10px 22px; height: 44px; border-radius: 8px; border: 1px solid #dcd5c9; background: #ffffff; color: #332921; font-weight: 700; font-size: 13px; cursor: pointer;">
+          CANCEL
+        </button>
+        <button type="submit"
+          style="padding: 10px 24px; height: 44px; border-radius: 8px; border: none; background: #205e46; color: #ffffff; font-weight: 700; font-size: 13px; cursor: pointer; letter-spacing: 0.3px;">
+          SUBMIT CHECK
+        </button>
+      </div>
+    </form>
+  </div>
 </dialog>
 
 <script>
-const AI_ANALYZE_URL = @json(route('worker.monitoring.analyze'));
-const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
+var _curBatchId = null;
+var _curBatchCode = '';
+var _curBatchName = '';
+var _isWatered = true;
+var _selectedFiles = [];
+var _aiDisposeCount = 0;
+var _aiSavedCount = 0;
 
-/* ── QR scanner ─────────────────────────────────────────────────── */
-let qrStream = null, qrAnim = null;
+function openDailyCheck(batchId, code, name, bags) {
+  _curBatchId = batchId;
+  _curBatchCode = code;
+  _curBatchName = name;
+  _selectedFiles = [];
+  _aiDisposeCount = 0;
+  _aiSavedCount = 0;
 
-document.getElementById('qrScanBtn').onclick = () => {
-  document.getElementById('qrDlg').showModal();
-  startQr();
-};
+  document.getElementById('checkModalBatchInfo').textContent = code + ' · ' + name;
+  document.getElementById('photosGallery').innerHTML = '';
+  document.getElementById('detectBtn').textContent = 'PROCEED TO CHECK';
+  document.getElementById('batchPhotosInput').value = '';
 
-function startQr() {
-  const video = document.getElementById('qrVideo');
-  const status = document.getElementById('qrStatus');
-  status.textContent = 'Initialising camera…';
-
-  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-    .then(stream => {
-      qrStream = stream;
-      video.srcObject = stream;
-      status.textContent = 'Point at a batch QR code…';
-      scanLoop(video);
-    })
-    .catch(() => { status.textContent = 'Camera access denied. Allow camera and try again.'; });
+  setWatered(true);
+  document.getElementById('dailyCheckModal').showModal();
 }
 
-function scanLoop(video) {
-  if (typeof BarcodeDetector === 'undefined') {
-    document.getElementById('qrStatus').textContent = 'QR scanning not supported in this browser. Use Chrome on Android.';
+function setWatered(isYes) {
+  _isWatered = isYes;
+  var yesBtn = document.getElementById('btnWateredYes');
+  var noBtn  = document.getElementById('btnWateredNo');
+
+  if (isYes) {
+    yesBtn.style.cssText = 'flex: 1; height: 44px; border-radius: 8px; border: none; background: #205e46; color: #ffffff; font-weight: 700; font-size: 13px; cursor: pointer;';
+    noBtn.style.cssText  = 'flex: 1; height: 44px; border-radius: 8px; border: 1px solid #e5ded4; background: #fcfbfa; color: #332921; font-weight: 700; font-size: 13px; cursor: pointer;';
+  } else {
+    noBtn.style.cssText  = 'flex: 1; height: 44px; border-radius: 8px; border: none; background: #205e46; color: #ffffff; font-weight: 700; font-size: 13px; cursor: pointer;';
+    yesBtn.style.cssText = 'flex: 1; height: 44px; border-radius: 8px; border: 1px solid #e5ded4; background: #fcfbfa; color: #332921; font-weight: 700; font-size: 13px; cursor: pointer;';
+  }
+}
+
+function handlePhotosSelected(input) {
+  var gallery = document.getElementById('photosGallery');
+  gallery.innerHTML = '';
+  _selectedFiles = Array.from(input.files);
+
+  if (_selectedFiles.length > 0) {
+    document.getElementById('detectBtn').textContent = 'DETECT (' + _selectedFiles.length + ')';
+    
+    _selectedFiles.forEach(function(file) {
+      var thumb = document.createElement('div');
+      thumb.style.cssText = 'width: 54px; height: 54px; border-radius: 8px; background: #ebdfcc; background-size: cover; background-position: center; border: 1px solid #e5ded4;';
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        thumb.style.backgroundImage = 'url(' + e.target.result + ')';
+      };
+      reader.readAsDataURL(file);
+      gallery.appendChild(thumb);
+    });
+  } else {
+    document.getElementById('detectBtn').textContent = 'PROCEED TO CHECK';
+  }
+}
+
+function runAiDetection() {
+  if (!navigator.onLine) {
+    alert('AI Detection requires an active internet connection. Proceeding with manual check in offline mode.');
+    document.getElementById('dailyCheckModal').close();
+    showFinalCheck(0, 0, []);
     return;
   }
-  const detector = new BarcodeDetector({ formats: ['qr_code'] });
-  const tick = () => {
-    if (!qrStream) return;
-    detector.detect(video).then(codes => {
-      if (codes.length) {
-        const raw = codes[0].rawValue;
-        stopQr();
-        document.getElementById('qrDlg').close();
-        handleQrResult(raw);
-        return;
-      }
-      qrAnim = requestAnimationFrame(tick);
-    }).catch(() => { qrAnim = requestAnimationFrame(tick); });
-  };
-  video.addEventListener('loadedmetadata', () => { qrAnim = requestAnimationFrame(tick); }, { once: true });
-}
 
-function stopQr() {
-  cancelAnimationFrame(qrAnim);
-  qrStream?.getTracks().forEach(t => t.stop());
-  qrStream = null;
-}
-
-function handleQrResult(raw) {
-  // Support full URL (/worker/scan/BATCH-001) or bare code (BATCH-001)
-  const match = raw.match(/\/scan\/([^/?#]+)/);
-  const code = match ? match[1] : raw.trim();
-  // Find matching batch card and trigger its START DAILY CHECK button
-  const btn = [...document.querySelectorAll('[data-check]')].find(b => b.dataset.code === code);
-  if (btn) {
-    btn.click();
-  } else {
-    // Redirect to the scan route which will handle it server-side
-    window.location.href = '/worker/scan/' + encodeURIComponent(code);
+  if (!_selectedFiles.length) {
+    // Directly go to final check without photos
+    document.getElementById('dailyCheckModal').close();
+    showFinalCheck(0, 0, []);
+    return;
   }
+
+  var formData = new FormData();
+  _selectedFiles.forEach(function(file) {
+    formData.append('photos[]', file);
+  });
+  formData.append('_token', '{{ csrf_token() }}');
+
+  document.getElementById('detectBtn').textContent = 'ANALYZING...';
+  document.getElementById('detectBtn').disabled = true;
+
+  fetch('{{ route("worker.monitoring.analyzeMultiple") }}', {
+    method: 'POST',
+    body: formData,
+  })
+  .then(function(res) { return res.json(); })
+  .then(function(data) {
+    document.getElementById('detectBtn').textContent = 'DETECT (' + _selectedFiles.length + ')';
+    document.getElementById('detectBtn').disabled = false;
+    document.getElementById('dailyCheckModal').close();
+
+    _aiDisposeCount = data.dispose_count || 0;
+    _aiSavedCount = data.saved_count || 0;
+
+    renderAiResults(data.results || []);
+    document.getElementById('aiResultModal').showModal();
+  })
+  .catch(function(err) {
+    document.getElementById('detectBtn').textContent = 'DETECT (' + _selectedFiles.length + ')';
+    document.getElementById('detectBtn').disabled = false;
+    alert('AI Vision service is temporarily busy. Proceeding with manual check.');
+    document.getElementById('dailyCheckModal').close();
+    showFinalCheck(0, 0, []);
+  });
 }
 
-document.getElementById('qrDlg').addEventListener('close', stopQr);
+function renderAiResults(results) {
+  var list = document.getElementById('aiResultsList');
+  list.innerHTML = '';
+  document.getElementById('aiResultSubtitle').textContent = 'AI analysis of ' + results.length + ' uploaded photos';
 
-/* ── AI Scan ─────────────────────────────────────────────────────── */
-const aiScanRow = document.getElementById('aiScanRow');
-const aiScanBtn = document.getElementById('aiScanBtn');
-const aiResult  = document.getElementById('aiResult');
-const aiPrescan = document.getElementById('aiPrescan');
+  results.forEach(function(item) {
+    var isDispose = item.status === 'dispose';
+    var card = document.createElement('div');
+    card.style.cssText = 'border: 1px solid ' + (isDispose ? '#fca5a5' : '#a7f3d0') + '; border-radius: 12px; padding: 14px; background: #ffffff; display: flex; gap: 14px; align-items: flex-start;';
 
-if (aiScanBtn) {
-  aiScanBtn.onclick = async () => {
-    const fileInput = document.querySelector('#checkDlg input[type=file]');
-    if (!fileInput?.files[0]) return;
+    var iconBox = document.createElement('div');
+    iconBox.style.cssText = 'width: 48px; height: 48px; border-radius: 8px; background: #ebdfcc; display: flex; align-items: center; justify-content: center; flex-shrink: 0;';
+    iconBox.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a87834" stroke-width="2"><path d="M12 3c-4.97 0-9 3.58-9 8 0 2.2 1.01 4.2 2.68 5.61L5 21l4.49-1.35C10.28 19.85 11.13 20 12 20c4.97 0 9-3.58 9-8s-4.03-8-9-8z"/></svg>';
 
-    aiScanBtn.disabled = true;
-    aiScanBtn.textContent = '⏳ Scanning…';
+    var info = document.createElement('div');
+    info.style.cssText = 'flex: 1;';
 
-    const fd = new FormData();
-    fd.append('photo', fileInput.files[0]);
-    fd.append('_token', CSRF);
+    var top = document.createElement('div');
+    top.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px;';
+    
+    var badge = document.createElement('span');
+    badge.textContent = item.badge;
+    badge.style.cssText = isDispose
+      ? 'background: #fde8e8; color: #cf3b3b; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 8px;'
+      : 'background: #dcf3eb; color: #2d7862; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 8px;';
 
-    try {
-      const res = await fetch(AI_ANALYZE_URL, { method: 'POST', body: fd });
+    var title = document.createElement('span');
+    title.style.cssText = 'font-size: 13px; font-weight: 700; color: #241c16;';
+    title.textContent = 'Photo ' + item.index;
 
-      if (res.status === 503) {
-        // AI not configured — show setup instructions
-        aiResult.hidden = false;
-        aiResult.className = 'ai-card ai-card-warn';
-        aiResult.innerHTML = `
-          <div class="ai-card-hd"><span class="ai-badge" style="background:#fef9c3;color:#92400e">⚙️ AI NOT SET UP</span></div>
-          <p style="font-size:13px;line-height:1.6;margin:0 0 8px">
-            The AI photo scanner needs an API key to work. You can use either <strong>Gemini</strong> or <strong>Claude</strong>.
-          </p>
-          <p style="font-size:12px;color:var(--muted);margin:0">
-            Add <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">GEMINI_API_KEY=your_key_here</code>
-            to your <strong>.env</strong> file, then restart the server.
-          </p>`;
-        return;
-      }
+    top.appendChild(badge);
+    top.appendChild(title);
 
+    var dis = document.createElement('div');
+    dis.style.cssText = 'font-size: 12px; color: #241c16; margin-bottom: 2px;';
+    dis.innerHTML = '<strong>Disease:</strong> ' + item.disease;
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => null);
-        throw new Error(errData?.error || ('AI error ' + res.status));
-      }
-      const r = await res.json();
-      renderAiResult(r);
-    } catch (e) {
-      aiResult.hidden = false;
-      aiResult.className = 'ai-card';
-      aiResult.innerHTML = '<p style="color:#b91c1c;margin:0">⚠ ' + e.message + '</p>';
-    } finally {
-      aiScanBtn.disabled = false;
-      aiScanBtn.innerHTML = '🔍 RE-SCAN PHOTO';
-    }
-  };
+    var sol = document.createElement('div');
+    sol.style.cssText = 'font-size: 12px; color: #756a60;';
+    sol.innerHTML = '<strong>Solution:</strong> ' + item.solution;
+
+    info.appendChild(top);
+    info.appendChild(dis);
+    info.appendChild(sol);
+
+    card.appendChild(iconBox);
+    card.appendChild(info);
+    list.appendChild(card);
+  });
+
+  var summaryHtml = '<span style="color:#cf3b3b">' + _aiDisposeCount + ' bag' + (_aiDisposeCount === 1 ? '' : 's') + ' to dispose</span> · <span style="color:#2d7862">' + _aiSavedCount + ' bag' + (_aiSavedCount === 1 ? '' : 's') + ' can be saved</span>';
+  document.getElementById('aiSummaryFooter').innerHTML = summaryHtml;
 }
 
-const STATUS_COLORS = { healthy: '#16a34a', attention: '#d97706', contaminated: '#dc2626', unclear: '#64748b' };
-const STATUS_ICONS  = { healthy: '✅', attention: '⚠️', contaminated: '🚨', unclear: '❓' };
+function finishAiDetection() {
+  document.getElementById('aiResultModal').close();
+  showFinalCheck(_aiDisposeCount, _aiSavedCount);
+}
 
-function renderAiResult(r) {
-  const badgeColor = STATUS_COLORS[r.status] || '#64748b';
-  const badgeIcon  = STATUS_ICONS[r.status] || '';
-  const daysText   = r.days_to_harvest != null
-    ? (r.days_to_harvest === 0 ? '🌾 Ready to harvest today!' : '🗓 ~' + r.days_to_harvest + ' days to harvest')
+function showFinalCheck(disposeCount, savedCount) {
+  document.getElementById('finalBatchSubtitle').textContent = _curBatchCode + ' · ' + _curBatchName;
+  document.getElementById('finalCheckForm').action = '/worker/monitoring/' + _curBatchId;
+  
+  setFinalWatered(_isWatered);
+
+  var displayInput = document.getElementById('finalLostDisplay');
+  var hiddenInput  = document.getElementById('finalLostBagsInput');
+
+  if (disposeCount > 0) {
+    displayInput.value = disposeCount + ' (from AI detection)';
+    hiddenInput.value  = disposeCount;
+  } else {
+    displayInput.value = '0';
+    hiddenInput.value  = 0;
+  }
+
+  document.getElementById('finalNotesInput').value = disposeCount > 0
+    ? 'Defective bags detected and disposed based on AI scan.'
     : '';
 
-  let stageText = r.stage_label || r.stage;
-  if (r.contamination && r.contamination !== 'none') {
-    stageText += ' · ' + (r.contamination_label || r.contamination);
-  }
-
-  aiResult.className = 'ai-card';
-  aiResult.innerHTML = `
-    <div class="ai-card-hd" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-      <span class="ai-badge" style="background:${badgeColor}22;color:${badgeColor};padding:4px 10px;border-radius:20px;font:700 11px Arial;letter-spacing:.5px;text-transform:uppercase">${badgeIcon} ${(r.status || 'UNKNOWN').toUpperCase()}</span>
-      <span style="font-size:11px;color:var(--muted)">${r.confidence || 'normal'} confidence</span>
-      ${daysText ? `<span style="font-size:12px;font-weight:700;color:var(--gold);margin-left:auto">${daysText}</span>` : ''}
-    </div>
-    <div style="font-size:12px;color:#52617d;margin-bottom:6px;font-weight:600">${stageText}</div>
-    <p style="font-size:13px;line-height:1.6;margin:0;color:var(--ink)">${r.summary || ''}</p>
-    <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Notes auto-filled below. Edit freely before submitting.</p>
-  `;
-  aiResult.hidden = false;
-
-  // Auto-fill notes
-  const notes = document.getElementById('checkNotes');
-  if (notes) {
-    let autoNote = '[AI] ' + (r.summary || '');
-    if (r.days_to_harvest != null) autoNote += (r.days_to_harvest === 0 ? ' Ready to harvest.' : ' Est. harvest in ' + r.days_to_harvest + ' day(s).');
-    if (notes.value.trim() === '' || notes.value.startsWith('[AI]')) notes.value = autoNote;
-  }
-
-  // Auto-set condition based on AI
-  if (r.status === 'healthy') triggerCondition('good');
-  else if (r.status === 'contaminated') triggerCondition('defect');
-
-  if (aiPrescan) aiPrescan.value = '1';
+  document.getElementById('finalCheckModal').showModal();
 }
 
-/* ── Condition buttons ───────────────────────────────────────────── */
-function triggerCondition(cond) {
-  document.querySelectorAll('.cond-btn').forEach(b => b.classList.remove('active'));
-  const btn = document.querySelector('.cond-btn[data-cond="' + cond + '"]');
-  if (btn) btn.classList.add('active');
-  const input = document.getElementById('conditionInput');
-  const label = document.getElementById('conditionLabel');
-  if (input) input.value = cond;
-  if (label) {
-    label.hidden = false;
-    label.textContent = cond === 'good' ? '✅ Marked as GOOD' : '⚠️ Marked as DEFECT';
-    label.style.color = cond === 'good' ? '#16a34a' : '#dc2626';
+function setFinalWatered(isYes) {
+  _isWatered = isYes;
+  document.getElementById('finalWateredInput').value = isYes ? '1' : '0';
+  var yesBtn = document.getElementById('finalBtnWateredYes');
+  var noBtn  = document.getElementById('finalBtnWateredNo');
+
+  if (isYes) {
+    yesBtn.style.cssText = 'flex: 1; height: 44px; border-radius: 8px; border: none; background: #205e46; color: #ffffff; font-weight: 700; font-size: 13px; cursor: pointer;';
+    noBtn.style.cssText  = 'flex: 1; height: 44px; border-radius: 8px; border: 1px solid #e5ded4; background: #fcfbfa; color: #332921; font-weight: 700; font-size: 13px; cursor: pointer;';
+  } else {
+    noBtn.style.cssText  = 'flex: 1; height: 44px; border-radius: 8px; border: none; background: #205e46; color: #ffffff; font-weight: 700; font-size: 13px; cursor: pointer;';
+    yesBtn.style.cssText = 'flex: 1; height: 44px; border-radius: 8px; border: 1px solid #e5ded4; background: #fcfbfa; color: #332921; font-weight: 700; font-size: 13px; cursor: pointer;';
   }
 }
 
-document.querySelectorAll('.cond-btn').forEach(b => {
-  b.addEventListener('click', () => triggerCondition(b.dataset.cond));
+document.addEventListener('DOMContentLoaded', function() {
+  var finalForm = document.getElementById('finalCheckForm');
+  if (finalForm) {
+    finalForm.addEventListener('submit', function(e) {
+      if (!navigator.onLine) {
+        e.preventDefault();
+        var bId = _curBatchId;
+        var bCode = _curBatchCode;
+        var bName = _curBatchName;
+        var act = finalForm.action;
+        var watered = document.getElementById('finalWateredInput').value;
+        var lost = parseInt(document.getElementById('finalLostBagsInput').value, 10) || 0;
+        var notes = document.getElementById('finalNotesInput').value;
+
+        window.saveOfflineDailyCheck({
+          url: act,
+          batch_id: bId,
+          batch_code: bCode,
+          batch_name: bName,
+          data: {
+            watered: watered,
+            lost_bags: lost,
+            notes: notes
+          },
+          saved_at: new Date().toISOString()
+        });
+
+        document.getElementById('finalCheckModal').close();
+
+        // Visually update batch button
+        var btns = document.querySelectorAll('button[onclick*="openDailyCheck(' + bId + ',"]');
+        btns.forEach(function(b) {
+          b.style.background = '#8a5c18';
+          b.textContent = 'CHECK SAVED (OFFLINE) ✓';
+          b.disabled = true;
+        });
+      }
+    });
+  }
 });
 </script>
 @endsection
+

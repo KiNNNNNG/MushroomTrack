@@ -107,10 +107,6 @@
         </div>
         <div class="brand-title">MushFung<span>AI</span></div>
         <div class="brand-tagline">Smart Monitoring for Healthier Mushrooms</div>
-        <button type="button" class="pwa-install-btn" onclick="installMushFungApp()" style="display: none; margin-top: 18px; background: rgba(212, 154, 61, 0.15); border: 1px solid rgba(212, 154, 61, 0.4); color: #d49a3d; border-radius: 8px; padding: 8px 16px; font-size: 11px; font-weight: 800; cursor: pointer; align-items: center; gap: 6px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          INSTALL APP
-        </button>
       </div>
     @endif
   </section>

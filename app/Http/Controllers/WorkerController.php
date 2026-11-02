@@ -48,6 +48,10 @@ class WorkerController extends Controller
             ->count();
 
         return view('worker.overview', [
+            'fruiting'        => Batch::where('status', 'fruiting')->count(),
+            'incubating'      => Batch::where('status', 'incubating')->count(),
+            'lost'            => Batch::sum('lost_bags'),
+            'yield'           => (float) Batch::sum('yield_kg'),
             'fruiting'        => (int) ($batchStats->fruiting_count ?? 0),
             'incubating'      => (int) ($batchStats->incubating_count ?? 0),
             'lost'            => (int) ($batchStats->total_lost ?? 0),

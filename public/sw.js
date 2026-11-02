@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mushfung-cache-v5';
+const CACHE_NAME = 'mushfung-cache-v6';
 
 const STATIC_ASSETS = [
   '/offline',
@@ -198,12 +198,17 @@ self.addEventListener('fetch', event => {
             if (matched) return matched;
           } catch(e) {}
 
-          // 3. If navigating to root or home or monitoring, check worker cached pages
-          const cachedMonitoring = await caches.match('/worker/monitoring');
-          if (cachedMonitoring) return cachedMonitoring;
+          // 3. If navigating specifically to a worker route, check worker cache
+          try {
+            const u = new URL(req.url);
+            if (u.pathname.startsWith('/worker')) {
+              const cachedMonitoring = await caches.match('/worker/monitoring');
+              if (cachedMonitoring) return cachedMonitoring;
 
-          const cachedOverview = await caches.match('/worker/overview');
-          if (cachedOverview) return cachedOverview;
+              const cachedOverview = await caches.match('/worker/overview');
+              if (cachedOverview) return cachedOverview;
+            }
+          } catch(e) {}
 
           // 4. Try dedicated /offline page
           const cachedOffline = await caches.match('/offline');

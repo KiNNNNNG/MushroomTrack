@@ -10,7 +10,17 @@ class EnsureRole
     public function handle(Request $request, Closure $next, string ...$roles)
     {
         $user = $request->user();
-        abort_unless($user && $user->status !== 'inactive' && in_array($user->role, $roles, true), 403);
+
+        if (! $user || $user->status === 'inactive') {
+            abort(403);
+        }
+
+        if (! in_array($user->role, $roles, true)) {
+            if ($request->expectsJson() || $request->ajax()) {
+                abort(403, 'Unauthorized.');
+            }
+            return redirect()->route('home');
+        }
 
         return $next($request);
     }

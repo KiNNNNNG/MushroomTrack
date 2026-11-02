@@ -405,11 +405,10 @@ if ('serviceWorker' in navigator) {
           reg.update();
         }
 
-        // Proactively warm offline cache for vital worker pages
-        if (navigator.onLine && 'caches' in window) {
-          caches.open('mushfung-cache-v5').then(cache => {
-            const pagesToWarm = ['/offline', '/worker/monitoring', '/worker/overview'];
-            pagesToWarm.forEach(url => {
+        // Only cache worker pages if the user is actively inside the worker section
+        if (navigator.onLine && 'caches' in window && window.location.pathname.startsWith('/worker')) {
+          caches.open('mushfung-cache-v6').then(cache => {
+            ['/offline', '/worker/monitoring', '/worker/overview'].forEach(url => {
               fetch(url, { redirect: 'follow' })
                 .then(res => {
                   if (res && (res.ok || res.status === 200)) {
@@ -478,6 +477,7 @@ window.installMushFungApp = function() {
       const parsed = new URL(url, window.location.href);
       if (parsed.origin !== window.location.origin) return;
       if (parsed.pathname === window.location.pathname) return;
+      if (parsed.pathname.includes('/logout') || parsed.pathname.includes('/login') || parsed.pathname.includes('/register')) return;
       prefetched.add(url);
       const link = document.createElement('link');
       link.rel = 'prefetch';

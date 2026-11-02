@@ -205,7 +205,7 @@
       var target = "{{ route('home') }}";
       setTimeout(function () {
         if (!navigator.onLine) {
-          window.location.replace('/worker/monitoring');
+          window.location.replace('/offline');
         } else {
           window.location.replace(target);
         }

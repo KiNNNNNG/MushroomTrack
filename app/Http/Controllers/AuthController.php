@@ -21,30 +21,53 @@ class AuthController extends Controller
             'password' => ['required'],
         ]);
 
-        // The "Username" box also accepts an email address
-        $field = filter_var($data['username'], FILTER_VALIDATE_EMAIL) ? 'email' : 'username';
+        $identifier = trim($data['username']);
 
-        if (! Auth::attempt([$field => $data['username'], 'password' => $data['password']], $request->boolean('remember'))) {
+        // Accept username, email address, or contact number
+        $user = User::where('username', $identifier)
+            ->orWhere('email', $identifier)
+            ->orWhere(function ($q) use ($identifier) {
+                if (!empty($identifier) && strlen($identifier) >= 7) {
+                    $q->where('phone', $identifier);
+                }
+            })
+            ->first();
+
+        if (! $user || ! Hash::check($data['password'], $user->password)) {
             return back()->withErrors(['username' => 'Invalid username or password.'])->onlyInput('username');
         }
 
-        if (Auth::user()->status === 'inactive') {
-            Auth::logout();
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
-
+        if ($user->status === 'inactive') {
             return back()->withErrors(['username' => 'This account is inactive.'])->onlyInput('username');
         }
 
+        Auth::login($user, $request->boolean('remember'));
         $request->session()->regenerate();
 
-        $dest = match(Auth::user()->role) {
+        $role = $user->role;
+        $dest = match($role) {
             'admin'  => route('admin.dashboard'),
             'worker' => route('worker.overview'),
             default  => route('customer.shop'),
         };
 
-        return redirect()->intended($dest);
+        // If an intended URL exists, only allow it if it strictly belongs to this user's role
+        $intended = $request->session()->get('url.intended');
+        $request->session()->forget('url.intended');
+
+        if ($intended) {
+            $isValidIntended = match($role) {
+                'admin'  => str_contains($intended, '/admin'),
+                'worker' => str_contains($intended, '/worker'),
+                default  => str_contains($intended, '/shop'),
+            };
+
+            if ($isValidIntended && !str_ends_with($intended, '/login') && !str_ends_with($intended, '/register')) {
+                return redirect()->to($intended);
+            }
+        }
+
+        return redirect()->to($dest);
     }
 
     public function showRegister()

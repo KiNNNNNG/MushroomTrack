@@ -73,7 +73,7 @@ class AdminController extends Controller
             $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->oldest(), 'harvests'])->find($batchId);
         }
         return view('admin.completed', [
-            'batches'       => Batch::where('status', 'harvested')->orderByDesc('updated_at')->get(),
+            'batches'       => Batch::whereIn('status', ['harvested', 'completed'])->orderByDesc('updated_at')->get(),
             'selectedBatch' => $selectedBatch,
         ]);
     }

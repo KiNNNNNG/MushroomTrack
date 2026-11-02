@@ -48,10 +48,6 @@ class WorkerController extends Controller
             ->count();
 
         return view('worker.overview', [
-            'fruiting'        => Batch::where('status', 'fruiting')->count(),
-            'incubating'      => Batch::where('status', 'incubating')->count(),
-            'lost'            => Batch::sum('lost_bags'),
-            'yield'           => (float) Batch::sum('yield_kg'),
             'fruiting'        => (int) ($batchStats->fruiting_count ?? 0),
             'incubating'      => (int) ($batchStats->incubating_count ?? 0),
             'lost'            => (int) ($batchStats->total_lost ?? 0),
@@ -389,7 +385,7 @@ class WorkerController extends Controller
 
         $batch->update([
             'status'       => 'fruiting',
-            'harvest_date' => now()->addDays(14),
+            'harvest_date' => now()->addDays(8),
         ]);
 
         ActivityLog::record('Moved to fruiting', "{$batch->code} ({$batch->bags} bags)");
@@ -400,8 +396,12 @@ class WorkerController extends Controller
 
     public function harvest()
     {
+        $batches = Batch::where('status', 'fruiting')->orderBy('code')->get();
+        // Expected yield: 0.45 kg to 0.90 kg per bag (450g–900g)
         return view('worker.harvest', [
-            'batches' => Batch::where('status', 'fruiting')->orderBy('code')->get(),
+            'batches'       => $batches,
+            'yieldMinPerBag' => 0.45,
+            'yieldMaxPerBag' => 0.90,
         ]);
     }
 
@@ -419,7 +419,7 @@ class WorkerController extends Controller
             $batch = Batch::lockForUpdate()->find($data['batch_id']);
 
             $batch->yield_kg += (float) $data['weight_kg'];
-            $batch->status = 'completed';
+            $batch->status = 'harvested';
             $batch->save();
 
             if ($product) {

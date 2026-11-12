@@ -13,48 +13,8 @@ function userWithRole(string $role): User
 
 function makeBatch(string $status, string $code = 'BATCH-900'): Batch
 {
-    return Batch::create(['code' => $code, 'name' => 'QR test', 'bags' => 5, 'lost_bags' => 0, 'yield_kg' => 0, 'status' => $status]);
+    return Batch::create(['code' => $code, 'name' => 'Export test', 'bags' => 5, 'lost_bags' => 0, 'yield_kg' => 0, 'status' => $status]);
 }
-
-/* ---------------- QR ---------------- */
-
-it('sends a fruiting batch scan to its daily-check form', function () {
-    makeBatch('fruiting');
-
-    $this->actingAs(userWithRole('worker'))->get('/worker/scan/BATCH-900')
-        ->assertRedirect(route('worker.monitoring', ['open' => 'BATCH-900']));
-});
-
-it('explains why an incubating or harvested batch has no daily check', function () {
-    makeBatch('incubating', 'INC-1');
-    makeBatch('harvested', 'DONE-1');
-    $w = userWithRole('worker');
-
-    $this->actingAs($w)->get('/worker/scan/INC-1')->assertRedirect(route('worker.register'))->assertSessionHasErrors();
-    $this->actingAs($w)->get('/worker/scan/DONE-1')->assertRedirect(route('worker.monitoring'))->assertSessionHasErrors();
-});
-
-it('asks guests to sign in when they scan a code', function () {
-    makeBatch('fruiting');
-
-    $this->get('/worker/scan/BATCH-900')->assertRedirect(route('login'));
-});
-
-it('brings workers back to the scanned page after they sign in', function () {
-    User::factory()->create(['role' => 'worker', 'status' => 'active', 'username' => 'wally', 'password' => 'secret-pass']);
-
-    $this->withSession(['url.intended' => url('/worker/scan/BATCH-900')])
-        ->post('/login', ['username' => 'wally', 'password' => 'secret-pass'])
-        ->assertRedirect(url('/worker/scan/BATCH-900'));
-});
-
-it('shows printable QR labels to admins only', function () {
-    makeBatch('fruiting');
-
-    $this->actingAs(userWithRole('worker'))->get(route('admin.batches.labels'))->assertForbidden();
-    $this->actingAs(userWithRole('admin'))->get(route('admin.batches.labels'))
-        ->assertOk()->assertSee('BATCH-900')->assertSee('<svg', false);
-});
 
 /* ---------------- Exports ---------------- */
 

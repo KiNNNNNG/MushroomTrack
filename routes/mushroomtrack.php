@@ -16,12 +16,12 @@ use App\Http\Controllers\WorkerController;
 use App\Http\Middleware\EnsureRole;
 use Illuminate\Support\Facades\Route;
 
-// First thing visitors see: redirect to dashboard if logged in, otherwise show animated splash screen
+// Open the appropriate destination immediately.
 Route::get('/', function () {
     if (auth()->check()) {
         return redirect()->route('home');
     }
-    return view('loading');
+    return redirect()->route('login');
 })->name('splash');
 
 Route::get('/offline', function () {
@@ -130,7 +130,6 @@ Route::prefix('shop')->name('customer.')->middleware(['auth', EnsureRole::class.
     Route::delete('/cart/{item}', [CustomerController::class, 'removeFromCart'])->name('cart.remove');
     Route::get('/checkout', [CustomerController::class, 'checkoutPage'])->name('checkout');
     Route::post('/checkout', [CustomerController::class, 'checkout'])->name('checkout.store');
-    Route::post('/pay/{payment}', [PaymentController::class, 'start'])->name('pay.start');
     Route::get('/pay/{payment}/return', [PaymentController::class, 'returned'])->name('pay.return');
     Route::get('/pay/{payment}/cancelled', [PaymentController::class, 'cancelled'])->name('pay.cancelled');
     Route::post('/order', [CustomerController::class, 'placeOrder'])->name('order.place');

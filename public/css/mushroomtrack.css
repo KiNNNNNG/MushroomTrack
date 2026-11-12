@@ -2129,3 +2129,8 @@ html.dark-theme .tag {
   color: #f7f4ee !important;
 }
 
+
+/* Keep the sidebar install action as the single desktop install button. */
+@media (min-width: 901px) {
+  .mobile-header-install { display: none !important; }
+}

@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class WorkerController extends Controller
@@ -61,50 +62,6 @@ class WorkerController extends Controller
     public function monitoring()
     {
         return view('worker.monitoring', ['batches' => Batch::where('status', 'fruiting')->orderBy('code')->get()]);
-    }
-
-    /** Target of the legacy batch-level QR code: opens that batch's daily-check form. */
-    public function scan(Batch $batch)
-    {
-        return match ($batch->status) {
-            'fruiting'   => redirect()->route('worker.monitoring', ['open' => $batch->code]),
-            'incubating' => redirect()->route('worker.register')->withErrors("{$batch->code} is still incubating. Move it to fruiting before starting daily checks."),
-            default      => redirect()->route('worker.monitoring')->withErrors("{$batch->code} is already harvested, so it has no daily check."),
-        };
-    }
-
-    /** Target of per-bag QR codes. */
-    public function bagMonitoring(Batch $batch, int $bag)
-    {
-        $totalBags = $batch->bags + $batch->lost_bags;
-        if ($bag < 1 || $bag > max(1, $totalBags)) {
-            return redirect()->route('worker.monitoring')->withErrors("Bag #{$bag} is not valid for {$batch->code}.");
-        }
-
-        if ($batch->status === 'incubating') {
-            return view('worker.bag-incubating', [
-                'batch' => $batch,
-                'bagNum' => $bag,
-                'totalBags' => $totalBags,
-                'status' => $batch->scanned_bags[$bag] ?? null,
-            ]);
-        }
-
-        $logs = MonitoringLog::with('user', 'loss')
-            ->where('batch_id', $batch->id)
-            ->latest()
-            ->limit(20)
-            ->get();
-
-        $lastAiLog = $logs->firstWhere('ai_analyzed_at', '!=', null);
-
-        return view('worker.bag-monitoring', [
-            'batch'      => $batch,
-            'bagNum'     => $bag,
-            'totalBags'  => $totalBags,
-            'logs'       => $logs,
-            'lastAiLog'  => $lastAiLog,
-        ]);
     }
 
     /** Live AI photo scan called from the daily-check dialog (returns JSON, does not save). */
@@ -253,6 +210,7 @@ class WorkerController extends Controller
         $logId = null;
         $error = DB::transaction(function () use ($request, $batch, $data, $lost, $name, &$logId) {
             $locked = Batch::lockForUpdate()->find($batch->id);
+            if ($locked->disposed_at || $locked->status === 'disposed') return 'This batch has been disposed and cannot receive daily checks.';
             if ($lost > $locked->bags) return "Only {$locked->bags} healthy bags are left in {$locked->code}.";
 
             $log = MonitoringLog::create([
@@ -339,7 +297,7 @@ class WorkerController extends Controller
             ]);
         }
 
-        $batches = Batch::whereIn('status', ['completed', 'harvested'])
+        $batches = Batch::whereIn('status', ['completed', 'harvested', 'disposed'])
             ->with('harvests')
             ->orderByDesc('updated_at')
             ->get();
@@ -408,37 +366,64 @@ class WorkerController extends Controller
     public function storeHarvest(Request $request)
     {
         $data = $request->validate([
-            'batch_id'  => ['required', 'exists:batches,id'],
-            'weight_kg' => ['required', 'numeric', 'min:0.1'],
+            'batch_id' => ['required', 'integer', 'exists:batches,id'],
+            'weight_kg' => ['required', 'numeric', 'min:0.1', 'decimal:0,2'],
+            'submission_id' => ['required', 'uuid'],
+            'flush_number' => ['required', 'integer', 'between:1,4'],
         ]);
 
-        $product = Product::where('name', 'LIKE', '%White%')->first() ?? Product::first();
-        $batch = null;
-
-        DB::transaction(function () use ($data, $request, $product, &$batch) {
-            $batch = Batch::lockForUpdate()->find($data['batch_id']);
-
-            $batch->yield_kg += (float) $data['weight_kg'];
-            $batch->status = 'harvested';
-            $batch->save();
-
-            if ($product) {
-                $product->increment('stock_kg', (float) $data['weight_kg']);
+        $recorded = DB::transaction(function () use ($data, $request) {
+            $batch = Batch::lockForUpdate()->findOrFail($data['batch_id']);
+            $existing = Harvest::where('submission_id', $data['submission_id'])->first();
+            if ($existing) {
+                if ($existing->batch_id !== $batch->id || $existing->user_id !== $request->user()->id
+                    || (int) $existing->flush_number !== (int) $data['flush_number']
+                    || round((float) $existing->weight_kg, 2) !== round((float) $data['weight_kg'], 2)) {
+                    throw ValidationException::withMessages(['submission_id' => 'This submission was already used for another harvest. Refresh the page.']);
+                }
+                return false;
             }
-
+            if ($batch->status !== 'fruiting' || $batch->disposed_at || $batch->flushes_exhausted || $batch->bags < 1) {
+                throw ValidationException::withMessages(['batch_id' => 'Only active fruiting batches with fewer than four harvests can be harvested.']);
+            }
+            if ((int) $data['flush_number'] !== $batch->flush_count + 1) {
+                throw ValidationException::withMessages(['flush_number' => 'This harvest cycle was already recorded. Refresh the page.']);
+            }
+            if ($batch->harvest_date && $batch->harvest_date->isAfter(today())) {
+                throw ValidationException::withMessages(['batch_id' => 'This batch is not due for its next harvest yet.']);
+            }
+            $product = Product::where('name', 'LIKE', '%White%')->first() ?? Product::first();
+            if (!$product) {
+                throw ValidationException::withMessages(['batch_id' => 'Create the White Oyster store product before recording a harvest.']);
+            }
+            $flush = $batch->flush_count + 1;
+            $disposed = $flush >= Batch::HARVEST_LIMIT;
             Harvest::create([
-                'batch_id'     => $batch->id,
-                'user_id'      => $request->user()->id,
-                'product_id'   => $product?->id,
-                'weight_kg'    => $data['weight_kg'],
-                'bags_cleared' => $batch->bags,
+                'batch_id' => $batch->id, 'user_id' => $request->user()->id,
+                'product_id' => $product->id, 'weight_kg' => $data['weight_kg'],
+                'submission_id' => $data['submission_id'], 'flush_number' => $flush,
+                'bags_cleared' => $disposed ? $batch->bags : 0,
             ]);
+            $product->increment('stock_kg', (float) $data['weight_kg']);
+            $batch->update([
+                'yield_kg' => round((float) $batch->yield_kg + (float) $data['weight_kg'], 2),
+                'flush_count' => $flush, 'max_flushes' => Batch::HARVEST_LIMIT,
+                'status' => $disposed ? 'disposed' : 'fruiting',
+                'disposed_at' => $disposed ? now() : null,
+                'bags' => $disposed ? 0 : $batch->bags,
+                'harvest_date' => $disposed ? null : today()->addDays(14),
+            ]);
+            ActivityLog::record('Harvest recorded', "{$batch->code}: harvest {$flush}/4, {$data['weight_kg']}kg");
+            if ($disposed) ActivityLog::record('Batch disposed', "{$batch->code}: four harvests completed");
+            return $batch;
         });
 
+        if (!$recorded) return redirect()->route('worker.harvest')->with('ok', 'This harvest was already recorded. Stock was not added again.');
         $kg = rtrim(rtrim(number_format($data['weight_kg'], 2), '0'), '.');
-        ActivityLog::record('Harvest recorded', "{$batch->code}: {$kg}kg");
-        Notice::toAdmins('Harvest recorded', auth()->user()->name." recorded a {$kg}kg harvest for {$batch->code} (added to store stock).", route('admin.store', [], false));
-
-        return redirect()->route('worker.completed')->with('ok', "Harvest recorded! +{$kg}kg automatically added to store stock.");
+        Notice::toAdmins('Harvest recorded', auth()->user()->name." recorded harvest {$recorded->flush_count}/4 for {$recorded->code}: {$kg}kg added to stock."
+            . ($recorded->disposed_at ? ' The batch is now disposed.' : ''), route('admin.store', [], false));
+        return redirect()->route($recorded->disposed_at ? 'worker.completed' : 'worker.harvest')
+            ->with('ok', "Harvest {$recorded->flush_count}/4 recorded. +{$kg}kg added to stock."
+                . ($recorded->disposed_at ? ' Four harvests completed; dispose of the bags.' : ' The batch remains fruiting for its next harvest.'));
     }
 }

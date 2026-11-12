@@ -7,27 +7,11 @@ use App\Models\Notice;
 use App\Models\Payment;
 use App\Services\PayMongo;
 use Illuminate\Http\Request;
-use RuntimeException;
 use Throwable;
 
-/** GCash / Maya payments through PayMongo, plus the admin's "refund done" button. */
+/** Reconcile legacy online payments and record refunds. New orders are cash only. */
 class PaymentController extends Controller
 {
-    /** Customer taps PAY NOW: open a fresh PayMongo checkout for an unpaid online payment. */
-    public function start(Request $request, Payment $payment)
-    {
-        abort_unless($payment->user_id === $request->user()->id, 403);
-
-        if ($payment->status !== 'unpaid' || ! $payment->isOnline()) return back()->withErrors('This payment does not need to be paid online.');
-        if (! $payment->orders()->where('status', 'pending')->exists()) return back()->withErrors('This order was cancelled, so there is nothing to pay.');
-
-        try {
-            return redirect()->away($payment->startCheckout());
-        } catch (RuntimeException $e) {
-            return back()->withErrors("The payment page could not open ({$e->getMessage()}). Please try again in a moment.");
-        }
-    }
-
     /**
      * PayMongo sends the customer back here after paying. We ask PayMongo directly instead of trusting the
      * browser, so it also works on localhost, where PayMongo's webhook cannot reach us.

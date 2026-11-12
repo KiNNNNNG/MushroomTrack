@@ -49,7 +49,7 @@ class CustomerController extends Controller
 
         $product = Product::findOrFail($data['product_id']);
         $qty     = (float) $data['quantity_kg'];
-        abort_if($qty > $product->stock_kg, 422, "Only {$product->stock_kg}kg available.");
+        abort_if($qty > $product->available_stock_kg, 422, "Only {$product->available_stock_kg}kg available.");
 
         $fulfillment = ($data['order_type'] ?? 'pickup') === 'deliver' ? 'delivery' : 'pickup';
         $address     = $fulfillment === 'delivery' ? ($data['delivery_address'] ?? null) : null;
@@ -62,7 +62,7 @@ class CustomerController extends Controller
             ->first();
 
         if ($existing) {
-            $existing->quantity_kg = min($existing->quantity_kg + $qty, $product->stock_kg);
+            $existing->quantity_kg = min($existing->quantity_kg + $qty, $product->available_stock_kg);
             if (!empty($name)) {
                 $existing->customer_name = $name;
             }
@@ -71,7 +71,7 @@ class CustomerController extends Controller
             CartItem::create([
                 'user_id'          => $request->user()->id,
                 'product_id'       => $product->id,
-                'quantity_kg'      => min($qty, $product->stock_kg),
+                'quantity_kg'      => min($qty, $product->available_stock_kg),
                 'customer_name'    => $name,
                 'fulfillment'      => $fulfillment,
                 'delivery_address' => $address,
@@ -96,7 +96,7 @@ class CustomerController extends Controller
 
         $product = Product::findOrFail($data['product_id']);
         $qty     = (float) $data['quantity_kg'];
-        abort_if($qty > $product->stock_kg, 422, "Only {$product->stock_kg}kg available.");
+        abort_if($qty > $product->available_stock_kg, 422, "Only {$product->available_stock_kg}kg available.");
 
         $fulfillment = ($data['order_type'] ?? 'pickup') === 'deliver' ? 'delivery' : 'pickup';
         $address     = $fulfillment === 'delivery' ? ($data['delivery_address'] ?? null) : null;
@@ -136,7 +136,11 @@ class CustomerController extends Controller
     public function placeCartOrders(Request $request)
     {
         $u = $request->user();
-        $selectedIds = (array) $request->input('cart_ids', []);
+        $data = $request->validate([
+            'cart_ids' => ['required', 'array', 'min:1'],
+            'cart_ids.*' => ['required', 'integer', 'distinct'],
+        ]);
+        $selectedIds = $data['cart_ids'];
 
         $query = CartItem::with('product')->where('user_id', $u->id);
         if (!empty($selectedIds)) {
@@ -149,7 +153,7 @@ class CustomerController extends Controller
         }
 
         foreach ($items as $i) {
-            if ($i->quantity_kg > $i->product->stock_kg) {
+            if ($i->quantity_kg > $i->product->available_stock_kg) {
                 return back()->withErrors("Not enough stock for {$i->product->name}.");
             }
         }
@@ -211,7 +215,7 @@ class CustomerController extends Controller
         abort_unless($item->user_id === $request->user()->id, 403);
         $qty = (float) $request->input('quantity_kg', 0);
         abort_if($qty <= 0, 422, 'Quantity must be greater than zero.');
-        $item->quantity_kg = min($qty, $item->product->stock_kg);
+        $item->quantity_kg = min($qty, $item->product->available_stock_kg);
         $item->save();
 
         return back()->with('ok', 'Cart updated.');
@@ -252,7 +256,7 @@ class CustomerController extends Controller
         $items = CartItem::with('product')->where('user_id', $u->id)->get();
         if ($items->isEmpty()) return redirect()->route('customer.shop')->withErrors('Your cart is empty.');
         foreach ($items as $i) {
-            if ($i->quantity_kg > $i->product->stock_kg) {
+            if ($i->quantity_kg > $i->product->available_stock_kg) {
                 return back()->withErrors("Not enough stock for {$i->product->name}.")->withInput();
             }
         }

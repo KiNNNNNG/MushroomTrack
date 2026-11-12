@@ -31,6 +31,10 @@ class OrderController extends Controller
         if ($status === 'completed') {
             $error = DB::transaction(function () use ($order) {
                 $product = Product::lockForUpdate()->find($order->product_id);
+                $lockedOrder = Order::lockForUpdate()->findOrFail($order->id);
+                if ($lockedOrder->status !== 'confirmed') {
+                    return 'This order is no longer awaiting completion.';
+                }
                 if ($product->stock_kg < $order->quantity_kg) {
                     return "Not enough stock ({$product->stock_kg}kg left).";
                 }

@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\PasswordResetCodeMail;
 use App\Models\PasswordOtp;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class PasswordResetController extends Controller
@@ -22,31 +22,32 @@ class PasswordResetController extends Controller
     {
         $email = $request->validate(['email' => ['required', 'email']])['email'];
 
-        $user = User::where('email', $email)->where('status', 'active')->first();
-        $devOtp = null;
-
-        if ($user) {
-            PasswordOtp::where('email', $email)->delete();
-            $code = (string) random_int(100000, 999999);
-            PasswordOtp::create(['email' => $email, 'code' => Hash::make($code), 'expires_at' => now()->addMinutes(10)]);
-
-            try {
-                Mail::raw("Your MushFungAI password reset code is {$code}. It expires in 10 minutes.\n\nIf you did not request this, ignore this email.",
-                    fn ($m) => $m->to($email)->subject('MushFungAI password reset code'));
-            } catch (\Throwable $e) {
-                Log::warning('OTP mail failed: '.$e->getMessage());
-            }
-
-            if (app()->environment('local') && config('app.debug')) {
-                Log::info("MushFungAI OTP for {$email}: {$code}");
-                $devOtp = $code;   // shown on screen ONLY while developing locally
-            }
+        $mailer = config('mail.password_reset_mailer');
+        $transport = config("mail.mailers.{$mailer}.transport");
+        if (!in_array($transport, ['smtp', 'sendmail', 'ses', 'ses-v2', 'postmark', 'resend', 'mailgun'], true)
+            || blank(config('mail.from.address')) || str_ends_with((string) config('mail.from.address'), '@example.com')) {
+            return back()->withInput(['email' => $email])->withErrors([
+                'email' => 'Password reset email delivery is not configured. Please contact the farm administrator.',
+            ]);
         }
-
-        // Same answer whether or not the email exists (prevents account guessing)
+        $user = User::where('email', $email)->where('status', 'active')->first();
+        if ($user) {
+            $code = (string) random_int(100000, 999999);
+            $otp = PasswordOtp::create(['email' => $email, 'code' => Hash::make($code), 'expires_at' => now()->addMinutes(10)]);
+            try {
+                Mail::mailer($mailer)->to($email)->send(new PasswordResetCodeMail($code));
+            } catch (\Throwable $e) {
+                $otp->delete();
+                report($e);
+                return back()->withInput(['email' => $email])->withErrors([
+                    'email' => 'We could not send the reset email. Please try again later or contact the farm administrator.',
+                ]);
+            }
+            // Keep a previously sent code valid until its replacement is actually sent.
+            PasswordOtp::where('email', $email)->where('id', '<>', $otp->id)->delete();
+        }
         return back()->withInput(['email' => $email])
-            ->with('ok', 'If that email is registered, we sent a 6-digit OTP. It expires in 10 minutes.')
-            ->with('dev_otp', $devOtp);
+            ->with('ok', 'If that email is registered, a 6-digit code has been sent. Check your inbox and spam folder. It expires in 10 minutes.');
     }
 
     /** Step 2: check the OTP. */

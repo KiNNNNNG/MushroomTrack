@@ -264,7 +264,7 @@ $fmtk = fn ($n) => rtrim(rtrim(number_format($n, 2), '0'), '.');
         <div class="ci" data-id="{{ $c->id }}"
              data-remove-url="{{ route('customer.cart.remove', $c) }}"
              data-update-url="{{ route('customer.cart.update', $c) }}"
-             data-stock="{{ $c->product->stock_kg }}"
+             data-stock="{{ $c->product->available_stock_kg }}"
              data-price="{{ $c->product->price }}"
              style="display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid #f0ebe2;">
           
@@ -287,7 +287,7 @@ $fmtk = fn ($n) => rtrim(rtrim(number_format($n, 2), '0'), '.');
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
             <div class="ci-controls" style="display: flex; align-items: center; border: 1px solid #e2ded6; border-radius: 6px; background: #ffffff;">
               <button type="button" class="qty-btn" data-dir="-1" style="width: 26px; height: 26px; border: none; background: transparent; font-size: 15px; font-weight: 700; color: #43352b; cursor: pointer; display: flex; align-items: center; justify-content: center;">&minus;</button>
-              <input type="number" class="qty-in" value="{{ $c->quantity_kg }}" min="0.5" step="0.5" max="{{ $c->product->stock_kg }}" style="width: 44px; height: 26px; border: none; text-align: center; font-weight: 700; font-size: 13px; color: #241c16; outline: none; -moz-appearance: textfield;">
+              <input type="number" class="qty-in" value="{{ $c->quantity_kg }}" min="0.5" step="0.5" max="{{ $c->product->available_stock_kg }}" style="width: 44px; height: 26px; border: none; text-align: center; font-weight: 700; font-size: 13px; color: #241c16; outline: none; -moz-appearance: textfield;">
               <span style="font-size: 11px; font-weight: 700; color: #7c726a; padding-right: 4px;">kg</span>
               <button type="button" class="qty-btn" data-dir="1" style="width: 26px; height: 26px; border: none; background: transparent; font-size: 15px; font-weight: 700; color: #43352b; cursor: pointer; display: flex; align-items: center; justify-content: center;">+</button>
             </div>

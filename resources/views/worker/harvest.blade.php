@@ -3,7 +3,7 @@
 
 <div style="margin-bottom: 24px;">
   <h1 style="font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: #241c16; margin: 0 0 4px;">Harvest Entry</h1>
-  <p style="font-size: 14px; color: #7c726a; margin: 0;">All fruiting batches. Green border = ready to harvest. Expected yield: <strong>450g – 900g per bag</strong> (7–10 days after fruiting).</p>
+  <p style="font-size: 14px; color: #7c726a; margin: 0;">Each batch allows four harvests, then its bags are disposed. Green border = ready to harvest. Expected yield: <strong>450g – 900g per bag</strong> (7–10 days after fruiting).</p>
 </div>
 
 {{-- Fruiting Batches Cards Grid --}}
@@ -26,7 +26,7 @@
         @endif
       </div>
 
-      <div style="font-size: 14px; color: #7c726a; margin-bottom: 14px;">{{ $b->name }}</div>
+      <div style="font-size: 14px; color: #7c726a; margin-bottom: 14px;">{{ $b->name }} &middot; {{ $b->flush_count }}/4 harvests completed</div>
 
       {{-- Stats grid --}}
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px;">
@@ -60,7 +60,7 @@
       <div style="margin-top: auto;">
         @if ($isReady)
           <button type="button"
-            onclick="openHarvestModal({{ $b->id }}, '{{ addslashes($b->code) }}', {{ $b->bags }}, {{ $minYield }}, {{ $maxYield }})"
+            onclick="openHarvestModal({{ $b->id }}, '{{ addslashes($b->code) }}', {{ $b->bags }}, {{ $minYield }}, {{ $maxYield }}, {{ $b->flush_count + 1 }}, '{{ \Illuminate\Support\Str::uuid() }}')"
             style="width: 100%; height: 42px; background: #205e46; color: #ffffff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; letter-spacing: 0.4px; transition: background 0.15s ease;"
             onmouseover="this.style.background='#184a36'" onmouseout="this.style.background='#205e46'">
             RECORD HARVEST
@@ -90,6 +90,8 @@
     <form method="POST" action="{{ route('worker.harvest.store') }}">
       @csrf
       <input type="hidden" name="batch_id" id="harvestBatchId">
+      <input type="hidden" name="submission_id" id="harvestSubmissionId">
+      <input type="hidden" name="flush_number" id="harvestFlushNumber">
 
       <div style="margin-bottom: 14px;">
         <label style="display: block; font-size: 11px; font-weight: 700; color: #8a7f74; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px;">BATCH</label>
@@ -134,17 +136,19 @@
 </dialog>
 
 <script>
-function openHarvestModal(batchId, code, bags, minYield, maxYield) {
+function openHarvestModal(batchId, code, bags, minYield, maxYield, flushNumber, submissionId) {
+  document.getElementById('harvestSubmissionId').value = submissionId;
+  document.getElementById('harvestFlushNumber').value = flushNumber;
   document.getElementById('harvestBatchId').value = batchId;
   document.getElementById('harvestBatchCode').value = code;
   document.getElementById('harvestBags').value = bags + ' bags';
-  document.getElementById('harvestModalSubtitle').textContent = code + ' — Enter actual yield harvested.';
+  document.getElementById('harvestModalSubtitle').textContent = code + ' ? Harvest ' + flushNumber + '/4. ' + (flushNumber === 4 ? 'Dispose of the bags after this harvest.' : 'Enter actual yield harvested.');
   document.getElementById('expectedYieldText').textContent = minYield + ' kg  –  ' + maxYield + ' kg';
 
   // Suggest the midpoint as a starting value
   var suggested = Math.round((minYield + maxYield) / 2 * 100) / 100;
   document.getElementById('harvestWeightKg').value = suggested;
-  document.getElementById('harvestWeightKg').min = (minYield * 0.1).toFixed(2); // 10% of min as floor
+  document.getElementById('harvestWeightKg').min = '0.1';
   document.getElementById('recordHarvestModal').showModal();
   document.getElementById('harvestWeightKg').focus();
   document.getElementById('harvestWeightKg').select();

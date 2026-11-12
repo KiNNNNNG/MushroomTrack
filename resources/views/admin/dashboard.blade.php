@@ -28,12 +28,12 @@
     <div style="font-size: 11px; font-weight: 800; color: #8a7f74; text-transform: uppercase; letter-spacing: 0.8px;">AVAILABLE STOCK</div>
     <div>
       <div style="font-size: 32px; font-weight: 800; color: #241c16; margin-top: 8px;">{{ rtrim(rtrim(number_format($availableStock, 1), '0'), '.') }} kg</div>
-      <div style="font-size: 11px; color: #7c726a; margin-top: 4px;">In inventory &rarr;</div>
+      <div style="font-size: 11px; color: #7c726a; margin-top: 4px;">Available to order &rarr;</div>
     </div>
   </a>
 
   <a href="{{ route('admin.store', ['tab' => 'sales']) }}" style="background: #ffffff; border: 1px solid #ece6dd; border-radius: 14px; padding: 20px 22px; box-shadow: 0 2px 8px rgba(40,30,20, 0.02); text-decoration: none; display: flex; flex-direction: column; justify-content: space-between; transition: transform .15s, box-shadow .15s;">
-    <div style="font-size: 11px; font-weight: 800; color: #8a7f74; text-transform: uppercase; letter-spacing: 0.8px;">REVENUE</div>
+    <div style="font-size: 11px; font-weight: 800; color: #8a7f74; text-transform: uppercase; letter-spacing: 0.8px;">SALES LESS EXPENSES</div>
     <div>
       <div style="font-size: 32px; font-weight: 800; color: #205e46; margin-top: 8px;">₱{{ number_format($revenue) }}</div>
       <div style="font-size: 11px; color: #7c726a; margin-top: 4px;">Total sales − expenses &rarr;</div>
@@ -46,13 +46,13 @@
   <div style="display: flex; justify-content: space-between; align-items: center; padding: 18px 24px; border-bottom: 1px solid #ece6dd; background: #faf8f5;">
     <div>
       <h2 style="font-size: 15px; font-weight: 800; color: #241c16; letter-spacing: 0.5px; text-transform: uppercase; margin: 0;">Production Yield Over Time</h2>
-      <p style="font-size: 12px; color: #7c726a; margin: 2px 0 0;">Cumulative harvested kilograms logged from farm batches</p>
+      <p style="font-size: 12px; color: #7c726a; margin: 2px 0 0;">Cumulative harvested kilograms within the selected period</p>
     </div>
     <form id="rangeForm">
       <select name="range" onchange="document.getElementById('rangeForm').submit()" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid #ece6dd; font-weight: 600; color: #241c16; background: #ffffff;">
-        <option value="week" {{ request('range') == 'week' ? 'selected' : '' }}>This Week</option>
-        <option value="month" {{ request('range') == 'month' ? 'selected' : '' }}>This Month</option>
-        <option value="year" {{ request('range') == 'year' ? 'selected' : '' }}>This Year</option>
+        <option value="week" {{ $range == 'week' ? 'selected' : '' }}>This Week</option>
+        <option value="month" {{ $range == 'month' ? 'selected' : '' }}>This Month</option>
+        <option value="year" {{ $range == 'year' ? 'selected' : '' }}>This Year</option>
       </select>
     </form>
   </div>
@@ -62,7 +62,7 @@
         No harvest or production data recorded for the selected period.
       </div>
     @else
-      <div id="salesChart" data-sales="{{ json_encode($sales) }}"></div>
+      <div id="salesChart" data-unit="kg" data-sales="{{ json_encode($sales) }}"></div>
     @endif
   </div>
 </div>

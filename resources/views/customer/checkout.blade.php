@@ -14,13 +14,13 @@
         <div class="cor co-item"
              data-update-url="{{ route('customer.cart.update', $i) }}"
              data-price="{{ $i->product->price }}"
-             data-stock="{{ $i->product->stock_kg }}">
+             data-stock="{{ $i->product->available_stock_kg }}">
           <span class="co-name">{{ $i->product->name }}</span>
           <div class="co-qty-wrap">
             <button type="button" class="qty-btn co-minus">−</button>
             <input type="number" class="qty-in co-qty"
                    value="{{ $i->quantity_kg }}"
-                   min="0.5" step="0.5" max="{{ $i->product->stock_kg }}">
+                   min="0.5" step="0.5" max="{{ $i->product->available_stock_kg }}">
             <span class="co-unit">kg</span>
             <button type="button" class="qty-btn co-plus">+</button>
           </div>

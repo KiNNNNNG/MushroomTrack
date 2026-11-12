@@ -6,12 +6,12 @@ use App\Models\ActivityLog;
 use App\Models\BagLoss;
 use App\Models\Batch;
 use App\Models\Expense;
+use App\Models\Harvest;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\User;
 use App\Support\DateRange;
-use App\Support\Qr;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 
@@ -22,17 +22,23 @@ class AdminController extends Controller
         $range = $request->query('range', 'month');
         $from = DateRange::from($range);
 
-        $salesQuery = Sale::query()->when($from, fn ($q) => $q->where('sold_at', '>=', $from));
+        $salesQuery = Harvest::query()->when($from, fn ($q) => $q->where('created_at', '>=', $from));
 
         $sales = (clone $salesQuery)
-            ->selectRaw('DATE(sold_at) as date, SUM(amount) as amount')
+            ->selectRaw('DATE(created_at) as date, SUM(weight_kg) as amount')
             ->groupBy('date')->orderBy('date')->get()
             ->map(fn ($s) => ['date' => $s->date, 'amount' => (float) $s->amount])->values();
 
         $activeBatches  = Batch::whereIn('status', ['incubating', 'fruiting'])->count();
         $totalBatches   = Batch::count();
         $harvestedYield = (float) Batch::sum('yield_kg');
-        $availableStock = (float) Product::sum('stock_kg');
+        $availableStock = Product::all()->sum(fn ($product) => $product->available_stock_kg);
+
+        $cumulativeYield = 0;
+        $sales = $sales->map(function ($point) use (&$cumulativeYield) {
+            $cumulativeYield = round($cumulativeYield + $point['amount'], 2);
+            return ['date' => $point['date'], 'amount' => $cumulativeYield];
+        });
 
         return view('admin.dashboard', [
             'activeBatches'  => $activeBatches,
@@ -73,7 +79,7 @@ class AdminController extends Controller
             $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->oldest(), 'harvests'])->find($batchId);
         }
         return view('admin.completed', [
-            'batches'       => Batch::whereIn('status', ['harvested', 'completed'])->orderByDesc('updated_at')->get(),
+            'batches'       => Batch::whereIn('status', ['harvested', 'completed', 'disposed'])->orderByDesc('updated_at')->get(),
             'selectedBatch' => $selectedBatch,
         ]);
     }

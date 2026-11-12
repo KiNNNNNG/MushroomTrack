@@ -24,31 +24,31 @@
             <span style="font-size: 22px; color: #b28135; font-weight: 800;">&#8369;{{ $fmt($p->price) }}</span>
             <span style="font-size: 13px; color: #8d8276; font-weight: 500;">/ kg</span>
           </div>
-          @if($p->stock_kg > 5)
+          @if($p->available_stock_kg > 5)
             <span style="background: #dcf3eb; color: #2d7862; font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 12px; letter-spacing: 0.4px;">IN STOCK</span>
-          @elseif($p->stock_kg > 0)
-            <span style="background: #fdf3d6; color: #b37400; font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 12px; letter-spacing: 0.4px;">{{ $p->stock_kg }} KG LEFT</span>
+          @elseif($p->available_stock_kg > 0)
+            <span style="background: #fdf3d6; color: #b37400; font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 12px; letter-spacing: 0.4px;">{{ $p->available_stock_kg }} KG LEFT</span>
           @else
             <span style="background: #fae2e2; color: #c73838; font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 12px; letter-spacing: 0.4px;">OUT OF STOCK</span>
           @endif
         </div>
 
         <div style="font-size: 13px; color: #756a60; margin-bottom: 20px;">
-          Stock: <strong style="color: #221c17;">{{ $p->stock_kg }} kg</strong>
+          Stock: <strong style="color: #221c17;">{{ $p->available_stock_kg }} kg</strong>
         </div>
 
         <div style="margin-top: auto; display: flex; gap: 10px;">
           <button type="button"
-            onclick="openBuyModal({{ $p->id }}, '{{ addslashes($p->name) }}', {{ $p->price }}, {{ $p->stock_kg }}, true)"
+            onclick="openBuyModal({{ $p->id }}, '{{ addslashes($p->name) }}', {{ $p->price }}, {{ $p->available_stock_kg }}, true)"
             style="flex: 1.1; height: 42px; border-radius: 8px; border: none; background: #b3833b; color: #ffffff; font-weight: 800; font-size: 12px; cursor: pointer; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: center; gap: 6px;"
-            @disabled($p->stock_kg <= 0)>
+            @disabled($p->available_stock_kg <= 0)>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
             ADD TO CART
           </button>
           <button type="button"
-            onclick="openBuyModal({{ $p->id }}, '{{ addslashes($p->name) }}', {{ $p->price }}, {{ $p->stock_kg }}, false)"
+            onclick="openBuyModal({{ $p->id }}, '{{ addslashes($p->name) }}', {{ $p->price }}, {{ $p->available_stock_kg }}, false)"
             style="flex: 0.9; height: 42px; border-radius: 8px; border: none; background: #43352b; color: #ffffff; font-weight: 800; font-size: 12px; cursor: pointer; letter-spacing: 0.5px;"
-            @disabled($p->stock_kg <= 0)>
+            @disabled($p->available_stock_kg <= 0)>
             BUY
           </button>
         </div>

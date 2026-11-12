@@ -98,36 +98,6 @@ it('refuses GCash and Maya while PayMongo is not set up', function () {
     expect(Order::count())->toBe(0)->and(Payment::count())->toBe(0)->and(CartItem::count())->toBe(1);
 });
 
-it('sends a GCash customer to the PayMongo page with the right amounts', function () {
-    config(['mushroomtrack.paymongo.secret_key' => 'sk_test_abc']);
-    Http::fake(['api.paymongo.com/*' => Http::response(['data' => ['id' => 'cs_123', 'attributes' => ['checkout_url' => 'https://checkout.paymongo.com/cs_123']]], 200)]);
-    $u = pdUser(); $p = pdProduct(); pdCart($u, $p, 2);
-
-    $this->actingAs($u)->post(route('customer.checkout.store'), [
-        'fulfillment' => 'delivery', 'payment_method' => 'gcash', 'delivery_address' => 'Brgy. Uno', 'contact_phone' => '09171234567',
-    ])->assertRedirect('https://checkout.paymongo.com/cs_123');
-
-    expect(Payment::first()->paymongo_session_id)->toBe('cs_123')->and(Order::first()->status)->toBe('pending');
-
-    Http::assertSent(function ($request) {
-        $a = $request['data']['attributes'];
-        $amounts = array_column($a['line_items'], 'amount');
-
-        return $a['payment_method_types'] === ['gcash'] && $amounts === [40000, 5000] && str_contains($a['reference_number'], 'PAY-');
-    });
-});
-
-it('keeps the order and lets the customer retry when PayMongo is down', function () {
-    config(['mushroomtrack.paymongo.secret_key' => 'sk_test_abc']);
-    Http::fake(['api.paymongo.com/*' => Http::response(['errors' => [['detail' => 'boom']]], 500)]);
-    $u = pdUser(); $p = pdProduct(); pdCart($u, $p);
-
-    $this->actingAs($u)->post(route('customer.checkout.store'), ['fulfillment' => 'pickup', 'payment_method' => 'maya'])
-        ->assertRedirect(route('customer.orders'))->assertSessionHasErrors();
-
-    expect(Order::count())->toBe(1)->and(Payment::first()->status)->toBe('unpaid');
-});
-
 /* ---------------- Coming back from PayMongo / webhook ---------------- */
 
 it('marks the payment paid and confirms the order when the customer returns from PayMongo', function () {
@@ -161,7 +131,7 @@ it('does not let one customer open another customer\'s payment', function () {
     $o = pdOrder(pdUser(), pdProduct(), 'gcash');
 
     $this->actingAs(pdUser())->get(route('customer.pay.return', $o->payment))->assertForbidden();
-    $this->actingAs(pdUser())->post(route('customer.pay.start', $o->payment))->assertForbidden();
+    $this->actingAs(pdUser())->post('/shop/pay/'.$o->payment_id)->assertNotFound();
 });
 
 it('accepts a correctly signed PayMongo webhook and rejects a forged one', function () {
@@ -239,10 +209,10 @@ it('flags a refund when a paid order is cancelled, and the admin can close it', 
     expect($o->payment->fresh()->status)->toBe('refunded');
 });
 
-it('shows payment and delivery details on the order pages', function () {
-    $u = pdUser(); $o = pdOrder($u, pdProduct(), 'gcash', 'delivery', ['delivery_fee' => 50, 'amount' => 450]);
-
-    $this->actingAs($u)->get(route('customer.orders'))->assertOk()->assertSee('GCASH')->assertSee('Brgy. Uno, San Pablo')->assertSee('PAY NOW');
-    $this->actingAs(pdUser('admin'))->get(route('admin.store', ['tab' => 'orders']))->assertOk()->assertSee('Brgy. Uno, San Pablo')->assertSee('WAITING FOR PAYMENT');
-    $this->actingAs($u)->get(route('customer.checkout'))->assertRedirect(route('customer.shop'));
+it('does not create a checkout session for a legacy online payment', function () {
+    $user = pdUser();
+    $order = pdOrder($user, pdProduct(), 'gcash');
+    Http::fake();
+    $this->actingAs($user)->post('/shop/pay/'.$order->payment_id)->assertNotFound();
+    Http::assertNothingSent();
 });

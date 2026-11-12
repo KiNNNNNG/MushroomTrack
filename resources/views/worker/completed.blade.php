@@ -9,6 +9,7 @@
       &larr; Back
     </a>
     <h1 style="font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: #241c16; margin: 0 0 4px;">{{ $batch->code }} &mdash; {{ $batch->name }}</h1>
+    @if($batch->disposed_at)<p>Disposed after {{ $batch->flush_count }} harvests on {{ $batch->disposed_at->format('M d, Y') }}.</p>@endif
     <p style="font-size: 13px; color: #7c726a; margin: 0;">Completed &middot; Harvested {{ optional($batch->updated_at)->format('Y-m-d') ?? '—' }}</p>
   </div>
 
@@ -84,7 +85,7 @@
             style="border-bottom: 1px solid #f2ede5; cursor: pointer; transition: background 0.15s;"
             onmouseover="this.style.background='#fcfbfa'" onmouseout="this.style.background=''">
             <td style="padding: 16px 20px; font-weight: 700; color: #241c16; font-size: 14px;">{{ $b->code }}</td>
-            <td style="padding: 16px 20px; color: #4a4037; font-size: 14px;">{{ $b->name }}</td>
+            <td style="padding: 16px 20px; color: #4a4037; font-size: 14px;">{{ $b->name }} @if($b->disposed_at)<small>Disposed &middot; {{ $b->flush_count }}/4 harvests</small>@endif</td>
             <td style="padding: 16px 20px; text-align: center; color: #4a4037; font-size: 14px;">{{ $b->bags }}</td>
             <td style="padding: 16px 20px; text-align: center; font-weight: 800; color: #241c16; font-size: 14px;">{{ $fmt($b->yield_kg) }} kg</td>
             <td style="padding: 16px 20px; text-align: center; color: #4a4037; font-size: 14px;">

@@ -7,11 +7,16 @@ use Illuminate\Support\Carbon;
 
 class Batch extends Model
 {
+    public const HARVEST_LIMIT = 4;
+
     protected $guarded = [];
+    protected $attributes = ['max_flushes' => self::HARVEST_LIMIT];
     protected $casts = [
         'harvest_date' => 'date',
         'disposed_at'  => 'datetime',
         'scanned_bags' => 'array',
+        'flush_count' => 'integer',
+        'max_flushes' => 'integer',
     ];
 
     public function losses() { return $this->hasMany(BagLoss::class); }
@@ -29,7 +34,7 @@ class Batch extends Model
      */
     public function getFlushesExhaustedAttribute(): bool
     {
-        return $this->flush_count >= ($this->max_flushes ?? 5);
+        return $this->flush_count >= self::HARVEST_LIMIT;
     }
 
     /**
@@ -37,7 +42,7 @@ class Batch extends Model
      */
     public function getFlushesRemainingAttribute(): int
     {
-        return max(0, ($this->max_flushes ?? 5) - $this->flush_count);
+        return max(0, self::HARVEST_LIMIT - $this->flush_count);
     }
 
     /**

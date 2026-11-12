@@ -55,19 +55,6 @@ class Payment extends Model
         return round((float) config('mushroomtrack.delivery.fee'), 2);
     }
 
-    /**
-     * Opens (or re-opens) the PayMongo hosted checkout and returns its URL.
-     *
-     * @throws \RuntimeException when PayMongo is not set up or refuses the request
-     */
-    public function startCheckout(): string
-    {
-        [$id, $url] = app(\App\Services\PayMongo::class)->createCheckout($this);
-        $this->update(['paymongo_session_id' => $id, 'checkout_url' => $url]);
-
-        return $url;
-    }
-
     /** Called when an admin cancels an order whose money already arrived: flags the refund. Returns true when it did (and already told the customer). */
     public function orderCancelled(Order $order): bool
     {

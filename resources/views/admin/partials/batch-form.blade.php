@@ -5,7 +5,7 @@
     <div class="f2">
       <div class="f"><label>Batch ID</label><input name="code" value="{{ $b->code ?? '' }}" placeholder="Auto"></div>
       <div class="f"><label>Status</label>
-        <select name="status">@foreach (['incubating','fruiting','harvested'] as $s)<option value="{{ $s }}" @selected(($b->status ?? 'incubating') === $s)>{{ ucfirst($s) }}</option>@endforeach</select></div>
+        <select name="status">@foreach ((($b->disposed_at ?? false) ? ['disposed'] : ['incubating','fruiting','harvested']) as $s)<option value="{{ $s }}" @selected(($b->status ?? 'incubating') === $s)>{{ ucfirst($s) }}</option>@endforeach</select></div>
     </div>
     <div class="f"><label>Name</label><input name="name" required value="{{ $b->name ?? '' }}"></div>
     <div class="f2">

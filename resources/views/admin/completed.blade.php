@@ -74,7 +74,7 @@
               style="border-bottom: 1px solid #f2ede5; cursor: pointer; transition: background 0.15s;"
               onmouseover="this.style.background='#faf8f5'" onmouseout="this.style.background=''">
             <td style="padding: 14px 20px; font-weight: 700; color: #241c16; font-family: monospace; white-space: nowrap;">{{ $b->code }}</td>
-            <td style="padding: 14px 20px; color: #4a4037;">{{ $b->name }}</td>
+            <td style="padding: 14px 20px; color: #4a4037;">{{ $b->name }} @if($b->disposed_at)<small>Disposed &middot; {{ $b->flush_count }}/4 harvests</small>@endif</td>
             <td style="padding: 14px 20px; text-align: center; font-weight: 700; color: #241c16; white-space: nowrap;">{{ $b->bags }}</td>
             <td style="padding: 14px 20px; color: #0e6b47; font-weight: 700; white-space: nowrap;">{{ $b->yield_kg ? $b->yield_kg.' kg' : '—' }}</td>
             <td style="padding: 14px 20px; color: #4a4037; white-space: nowrap;">{{ optional($b->updated_at)->format('Y-m-d') ?? '—' }}</td>

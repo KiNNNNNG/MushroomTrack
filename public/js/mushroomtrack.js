@@ -8,11 +8,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!el) return;
   const sales = JSON.parse(el.dataset.sales || '[]');
   const W = 1470, H = 330, L = 112, R = 1434, T = 22, B = 312;
-  const max = Math.max(1000, Math.ceil(Math.max(0, ...sales.map(s => s.amount)) / 250) * 250);
+  const unit = el.dataset.unit || '';
+  const max = Math.max(1, Math.ceil(Math.max(0, ...sales.map(s => s.amount))));
   const y = v => B - (v / max) * (B - T);
   let g = '';
   [0, .25, .5, .75, 1].map(f => f * max).forEach(v => {
-    g += `<text x="${L - 10}" y="${y(v) + 4}" text-anchor="end" font-size="12" fill="#8a96b0">${v}</text>`;
+    g += `<text x="${L - 10}" y="${y(v) + 4}" text-anchor="end" font-size="12" fill="#8a96b0">${Number(v.toFixed(2))} ${unit}</text>`;
     if (v > 0) g += `<line x1="${L}" x2="${R}" y1="${y(v)}" y2="${y(v)}" stroke="#cbd2de" stroke-dasharray="4 3"/>`;
     g += `<line x1="${L - 6}" x2="${L}" y1="${y(v)}" y2="${y(v)}" stroke="#8a96b0"/>`;
   });

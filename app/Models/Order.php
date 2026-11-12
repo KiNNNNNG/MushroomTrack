@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class Order extends Model
 {
@@ -48,9 +50,22 @@ class Order extends Model
     /** @param array<string,mixed> $extra payment_id, fulfillment, delivery_address, contact_phone ... */
     public static function place(User $user, Product $product, float $qty, array $extra = []): self
     {
-        return static::create($extra + [
-            'code' => static::newCode(), 'user_id' => $user->id, 'product_id' => $product->id,
-            'quantity_kg' => $qty, 'total' => $qty * $product->price, 'status' => 'pending',
-        ]);
+        return DB::transaction(function () use ($user, $product, $qty, $extra) {
+            $locked = Product::lockForUpdate()->findOrFail($product->id);
+            // Use a current read even if this checkout established an earlier MySQL snapshot.
+            $reserved = $locked->orders()->whereIn('status', ['pending', 'confirmed'])
+                ->lockForUpdate()->get(['quantity_kg'])->sum('quantity_kg');
+            $available = max(0, round((float) $locked->stock_kg - (float) $reserved, 2));
+            if ($qty <= 0 || $qty > $available) {
+                throw ValidationException::withMessages([
+                    'quantity_kg' => "Only {$available}kg available for {$locked->name}.",
+                ]);
+            }
+
+            return static::create($extra + [
+                'code' => static::newCode(), 'user_id' => $user->id, 'product_id' => $locked->id,
+                'quantity_kg' => $qty, 'total' => $qty * $locked->price, 'status' => 'pending',
+            ]);
+        });
     }
 }

@@ -8,6 +8,16 @@ class Product extends Model
 {
     protected $guarded = [];
 
+    public function orders() { return $this->hasMany(Order::class); }
+
+    /** Physical stock less quantities committed to pending and confirmed orders. */
+    public function getAvailableStockKgAttribute(): float
+    {
+        $reserved = $this->orders()->whereIn('status', ['pending', 'confirmed'])->sum('quantity_kg');
+
+        return max(0, round((float) $this->stock_kg - (float) $reserved, 2));
+    }
+
     public function getImageUrlAttribute(?string $value): ?string
     {
         if (empty($value) || str_contains($value, 'photo-1549007994') || str_contains($value, 'photo-1535254973040')) {

@@ -39,7 +39,7 @@ return [
     ],
 
     // Maximum number of harvest flushes before a bag should be disposed (system default; can be overridden per batch)
-    'max_flushes' => (int) env('MAX_FLUSHES', 5),
+    'max_flushes' => 4,
 
     'paymongo' => [
         'secret_key'     => env('PAYMONGO_SECRET_KEY'),      // sk_test_... or sk_live_...

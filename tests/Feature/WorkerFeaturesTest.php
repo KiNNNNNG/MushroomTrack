@@ -18,29 +18,30 @@ function fruitingBatch(int $bags = 10): Batch
     return Batch::create(['code' => 'T-'.random_int(100, 999), 'name' => 'Test', 'bags' => $bags, 'lost_bags' => 0, 'yield_kg' => 0, 'status' => 'fruiting']);
 }
 
-it('adds the harvested kilos to the chosen product stock', function () {
+it('adds the harvested kilos to white oyster stock and keeps the bags for later flushes', function () {
     $batch = fruitingBatch(10);
     $product = Product::create(['name' => 'White Oyster', 'price' => 200, 'stock_kg' => 5]);
 
     $this->actingAs(worker())->post(route('worker.harvest.store'), [
-        'batch_id' => $batch->id, 'product_id' => $product->id, 'weight_kg' => 2.5, 'bags_cleared' => 3,
+        'submission_id' => (string) \Illuminate\Support\Str::uuid(), 'flush_number' => 1, 'batch_id' => $batch->id, 'product_id' => $product->id, 'weight_kg' => 2.5, 'bags_cleared' => 3,
     ])->assertRedirect();
 
     expect((float) $product->fresh()->stock_kg)->toBe(7.5)
         ->and((float) $batch->fresh()->yield_kg)->toBe(2.5)
-        ->and($batch->fresh()->bags)->toBe(7)
+        ->and($batch->fresh()->bags)->toBe(10)
+        ->and($batch->fresh()->flush_count)->toBe(1)
         ->and(Harvest::first()->product_id)->toBe($product->id);
 });
 
-it('does not touch store stock when no product is chosen', function () {
+it('automatically adds harvest stock to the white oyster product', function () {
     $batch = fruitingBatch(10);
     $product = Product::create(['name' => 'White Oyster', 'price' => 200, 'stock_kg' => 5]);
 
     $this->actingAs(worker())->post(route('worker.harvest.store'), [
-        'batch_id' => $batch->id, 'product_id' => '', 'weight_kg' => 1, 'bags_cleared' => 1,
+        'submission_id' => (string) \Illuminate\Support\Str::uuid(), 'flush_number' => 1, 'batch_id' => $batch->id, 'product_id' => '', 'weight_kg' => 1, 'bags_cleared' => 1,
     ])->assertRedirect();
 
-    expect((float) $product->fresh()->stock_kg)->toBe(5.0)
+    expect((float) $product->fresh()->stock_kg)->toBe(6.0)
         ->and((float) $batch->fresh()->yield_kg)->toBe(1.0);
 });
 

@@ -18,7 +18,7 @@ class BatchController extends Controller
             'bags'         => ['required', 'integer', 'min:0'],
             'lost_bags'    => ['required', 'integer', 'min:0'],
             'yield_kg'     => ['nullable', 'numeric', 'min:0'],
-            'status'       => ['required', 'in:incubating,fruiting,harvested'],
+            'status'       => ['required', 'in:incubating,fruiting,harvested,disposed'],
             'harvest_date' => ['nullable', 'date'],
         ];
     }
@@ -40,6 +40,9 @@ class BatchController extends Controller
     public function update(Request $request, Batch $batch)
     {
         $data = $request->validate($this->rules($batch->id));
+        if (($batch->disposed_at || $batch->flushes_exhausted) && ($data['status'] !== 'disposed' || (int) $data['bags'] !== 0)) {
+            return back()->withErrors('A disposed batch cannot be reopened. Register a new batch instead.');
+        }
         $data['yield_kg'] = $data['yield_kg'] ?? 0;
         $data['code'] = $data['code'] ?: $batch->code;
 

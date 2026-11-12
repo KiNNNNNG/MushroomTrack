@@ -32,7 +32,7 @@ class AdminController extends Controller
         $activeBatches  = Batch::whereIn('status', ['incubating', 'fruiting'])->count();
         $totalBatches   = Batch::count();
         $harvestedYield = (float) Batch::sum('yield_kg');
-        $availableStock = Product::all()->sum(fn ($product) => $product->available_stock_kg);
+        $availableStock = Product::withReservedStock()->get()->sum(fn ($product) => $product->available_stock_kg);
 
         $cumulativeYield = 0;
         $sales = $sales->map(function ($point) use (&$cumulativeYield) {
@@ -58,7 +58,7 @@ class AdminController extends Controller
         $batchId = $request->query('batch');
         $selectedBatch = null;
         if ($batchId) {
-            $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->oldest(), 'losses'])->find($batchId);
+            $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->with('loss')->oldest(), 'losses'])->find($batchId);
         }
 
         $allBatches = Batch::with(['monitoringLogs' => fn ($q) => $q->latest()->limit(1)])->orderBy('code')->get();
@@ -76,7 +76,7 @@ class AdminController extends Controller
         $batchId = $request->query('batch');
         $selectedBatch = null;
         if ($batchId) {
-            $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->oldest(), 'harvests'])->find($batchId);
+            $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->with('loss')->oldest(), 'harvests'])->find($batchId);
         }
         return view('admin.completed', [
             'batches'       => Batch::whereIn('status', ['harvested', 'completed', 'disposed'])->orderByDesc('updated_at')->get(),
@@ -93,7 +93,7 @@ class AdminController extends Controller
 
         $from = DateRange::from($range);
 
-        $hasExpenses = Schema::hasTable('expenses');
+        $hasExpenses = $tab === 'expenses' && Schema::hasTable('expenses');
         $expensesQuery = $hasExpenses ? \App\Models\Expense::query()
             ->whereYear('expense_date', $year)
             ->whereMonth('expense_date', $month) : null;
@@ -102,18 +102,21 @@ class AdminController extends Controller
             ->whereYear('sold_at', $year)
             ->whereMonth('sold_at', $month);
 
+        $salesRecords = $tab === 'sales' ? $salesQuery->get() : collect();
+        $expenseRecords = $expensesQuery ? $expensesQuery->get() : collect();
+
         return view('admin.store', [
             'tab'           => $tab,
             'range'         => $range,
             'month'         => (int) $month,
             'year'          => (int) $year,
-            'products'      => Product::orderBy('id')->get(),
+            'products'      => $tab === 'products' ? Product::orderBy('id')->get() : collect(),
             'orders'        => $tab === 'orders'   ? Order::with('user', 'product', 'payment')->whereIn('status', ['pending', 'confirmed'])->latest()->get() : collect(),
             'history'       => $tab === 'history'  ? Order::with('user', 'product', 'payment')->whereIn('status', ['completed', 'cancelled'])->latest()->get() : collect(),
-            'sales'         => $tab === 'sales'    ? $salesQuery->get() : collect(),
-            'totalSales'    => $salesQuery->sum('amount'),
-            'expenses'      => ($tab === 'expenses' && $expensesQuery) ? $expensesQuery->get() : collect(),
-            'totalExpenses' => $expensesQuery ? $expensesQuery->sum('amount') : 0,
+            'sales'         => $salesRecords,
+            'totalSales'    => $salesRecords->sum('amount'),
+            'expenses'      => $expenseRecords,
+            'totalExpenses' => $expenseRecords->sum('amount'),
         ]);
     }
 

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 
 class Product extends Model
 {
@@ -10,10 +11,19 @@ class Product extends Model
 
     public function orders() { return $this->hasMany(Order::class); }
 
+    public function scopeWithReservedStock(Builder $query): Builder
+    {
+        return $query->withSum([
+            'orders as reserved_stock_kg' => fn ($orders) => $orders->whereIn('status', ['pending', 'confirmed']),
+        ], 'quantity_kg');
+    }
+
     /** Physical stock less quantities committed to pending and confirmed orders. */
     public function getAvailableStockKgAttribute(): float
     {
-        $reserved = $this->orders()->whereIn('status', ['pending', 'confirmed'])->sum('quantity_kg');
+        $reserved = array_key_exists('reserved_stock_kg', $this->attributes)
+            ? $this->attributes['reserved_stock_kg']
+            : $this->orders()->whereIn('status', ['pending', 'confirmed'])->sum('quantity_kg');
 
         return max(0, round((float) $this->stock_kg - (float) $reserved, 2));
     }

@@ -86,3 +86,25 @@ it('backfills old harvest cycles and reopens batches closed after one harvest', 
         ->and((int) Harvest::first()->flush_number)->toBe(1)
         ->and((float) $this->product->fresh()->stock_kg)->toBe(5.0);
 });
+
+it('renders the harvest page for a ready batch', function () {
+    $this->actingAs($this->worker)->get(route('worker.harvest'))->assertOk()
+        ->assertSee('RECORD HARVEST')->assertSee('submission_id', false);
+});
+
+it('records safely before the new audit columns have been migrated', function () {
+    \Illuminate\Support\Facades\Schema::table('harvests', function ($table) {
+        $table->dropUnique(['batch_id', 'flush_number']);
+        $table->dropUnique(['submission_id']);
+        $table->dropColumn(['submission_id', 'flush_number']);
+    });
+    for ($flush = 1; $flush <= 4; $flush++) {
+        $this->batch->refresh()->update(['harvest_date' => today()]);
+        $payload = cyclePayload($this->batch, $flush);
+        $this->actingAs($this->worker)->post(route('worker.harvest.store'), $payload)->assertSessionHasNoErrors();
+        $this->post(route('worker.harvest.store'), $payload)->assertSessionHasErrors();
+        expect(Harvest::count())->toBe($flush);
+    }
+    expect((float) $this->product->fresh()->stock_kg)->toBe(15.0)
+        ->and($this->batch->fresh()->status)->toBe('disposed');
+});

@@ -20,7 +20,7 @@
   <link rel="icon" type="image/png" href="{{ asset('images/favicon.png') }}">
   <link rel="apple-touch-icon" href="{{ asset('images/icon-192.png') }}">
   <link rel="manifest" href="{{ asset('manifest.json') }}">
-  <link rel="stylesheet" href="{{ asset('css/auth.css') }}?v={{ time() }}">
+  <link rel="stylesheet" href="{{ asset('css/auth.css') }}?v={{ config('app.asset_version') ?: (@filemtime(public_path('css/auth.css')) ?: '1') }}">
   <style>
     html, body.au {
       height: 100% !important;
@@ -120,7 +120,7 @@
     </div>
   </section>
 
-  <script src="{{ asset('js/mushroomtrack.js') }}?v={{ time() }}"></script>
+  <script src="{{ asset('js/mushroomtrack.js') }}?v={{ config('app.asset_version') ?: (@filemtime(public_path('js/mushroomtrack.js')) ?: '1') }}"></script>
   <script>
     function togglePassword(inputId, btn) {
       var inp = document.getElementById(inputId);

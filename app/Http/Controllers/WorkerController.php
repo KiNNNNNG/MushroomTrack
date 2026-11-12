@@ -15,6 +15,7 @@ use App\Services\Reminders;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -25,10 +26,12 @@ class WorkerController extends Controller
     public function overview()
     {
         $user = auth()->user();
-        // Gentle reminders for this worker, cached for 30 minutes to eliminate redundant queries
-        \Illuminate\Support\Facades\Cache::remember("worker_reminders_{$user->id}_" . today()->toDateString(), 1800, function () use ($user) {
-            return Reminders::forWorker($user);
-        });
+        // A session timestamp survives serverless requests; Vercel's array cache does not.
+        $reminderKey = 'worker_reminders_checked_at:'.$user->id;
+        if ((int) session($reminderKey, 0) < now()->subMinutes(30)->timestamp) {
+            Reminders::forWorker($user);
+            session([$reminderKey => now()->timestamp]);
+        }
 
         $batchStats = Batch::query()
             ->selectRaw("
@@ -39,23 +42,12 @@ class WorkerController extends Controller
             ")
             ->first();
 
-        $fruitingBatches = Batch::where('status', 'fruiting')
-            ->with(['monitoringLogs' => fn ($q) => $q->latest()->limit(1)])
-            ->orderBy('harvest_date')
-            ->get();
-
-        $needsCheckCount = Batch::where('status', 'fruiting')
-            ->whereDoesntHave('monitoringLogs', fn ($q) => $q->whereDate('created_at', today()))
-            ->count();
-
         return view('worker.overview', [
             'fruiting'        => (int) ($batchStats->fruiting_count ?? 0),
             'incubating'      => (int) ($batchStats->incubating_count ?? 0),
             'lost'            => (int) ($batchStats->total_lost ?? 0),
             'yield'           => (float) ($batchStats->total_yield ?? 0),
-            'fruitingBatches' => $fruitingBatches,
-            'needsCheckCount' => $needsCheckCount,
-            'logs'            => MonitoringLog::with('batch')->latest()->limit(5)->get(),
+            'logs'            => MonitoringLog::with('batch', 'loss')->latest()->limit(5)->get(),
         ]);
     }
 
@@ -269,7 +261,7 @@ class WorkerController extends Controller
     {
         $batchId = $request->query('batch');
         if ($batchId) {
-            $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->oldest(), 'losses'])->findOrFail($batchId);
+            $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->with('loss')->oldest(), 'losses'])->findOrFail($batchId);
             return view('worker.history', [
                 'batch' => $selectedBatch,
                 'logs'  => $selectedBatch->monitoringLogs,
@@ -290,7 +282,7 @@ class WorkerController extends Controller
     {
         $batchId = $request->query('batch');
         if ($batchId) {
-            $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->oldest(), 'losses', 'harvests'])->findOrFail($batchId);
+            $selectedBatch = Batch::with(['monitoringLogs' => fn ($q) => $q->with('loss')->oldest(), 'losses', 'harvests'])->findOrFail($batchId);
             return view('worker.completed', [
                 'batch' => $selectedBatch,
                 'logs'  => $selectedBatch->monitoringLogs,
@@ -372,9 +364,12 @@ class WorkerController extends Controller
             'flush_number' => ['required', 'integer', 'between:1,4'],
         ]);
 
-        $recorded = DB::transaction(function () use ($data, $request) {
+        // Older deployments still have the locked batch counter, but not these audit columns.
+        // Keep harvest recording usable while the schema migration is being deployed.
+        $tracksSubmissions = Schema::hasColumns('harvests', ['submission_id', 'flush_number']);
+        $recorded = DB::transaction(function () use ($data, $request, $tracksSubmissions) {
             $batch = Batch::lockForUpdate()->findOrFail($data['batch_id']);
-            $existing = Harvest::where('submission_id', $data['submission_id'])->first();
+            $existing = $tracksSubmissions ? Harvest::where('submission_id', $data['submission_id'])->first() : null;
             if ($existing) {
                 if ($existing->batch_id !== $batch->id || $existing->user_id !== $request->user()->id
                     || (int) $existing->flush_number !== (int) $data['flush_number']
@@ -401,9 +396,8 @@ class WorkerController extends Controller
             Harvest::create([
                 'batch_id' => $batch->id, 'user_id' => $request->user()->id,
                 'product_id' => $product->id, 'weight_kg' => $data['weight_kg'],
-                'submission_id' => $data['submission_id'], 'flush_number' => $flush,
                 'bags_cleared' => $disposed ? $batch->bags : 0,
-            ]);
+            ] + ($tracksSubmissions ? ['submission_id' => $data['submission_id'], 'flush_number' => $flush] : []));
             $product->increment('stock_kg', (float) $data['weight_kg']);
             $batch->update([
                 'yield_kg' => round((float) $batch->yield_kg + (float) $data['weight_kg'], 2),

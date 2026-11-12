@@ -33,7 +33,7 @@ $hubIcon = $role === 'worker' ? 'batches' : 'user';
     $unread = $notes->whereNull('read_at')->count();
 }
 if ($role === 'customer') {
-    $cart = \App\Models\CartItem::with('product')->where('user_id', $u->id)->get();
+    $cart = \App\Models\CartItem::with(['product' => fn ($query) => $query->withReservedStock()])->where('user_id', $u->id)->get();
 }
 $fmtk = fn ($n) => rtrim(rtrim(number_format($n, 2), '0'), '.');
 @endphp
@@ -67,9 +67,9 @@ $fmtk = fn ($n) => rtrim(rtrim(number_format($n, 2), '0'), '.');
   <link rel="icon" type="image/png" href="{{ asset('images/favicon.png') }}">
   <link rel="apple-touch-icon" href="{{ asset('images/icon-192.png') }}">
   <link rel="manifest" href="{{ asset('manifest.json') }}">
-  <link rel="stylesheet" href="{{ asset('css/mushroomtrack.css') }}?v={{ time() }}">
+  <link rel="stylesheet" href="{{ asset('css/mushroomtrack.css') }}?v={{ config('app.asset_version') ?: (@filemtime(public_path('css/mushroomtrack.css')) ?: '1') }}">
 </head>
-<body class="role-{{ $role }}">
+<body class="role-{{ $role }}" data-user-id="{{ $u->id }}">
 <div class="app">
   <aside>
     <div class="logo">
@@ -366,6 +366,6 @@ function deleteSingleNotice(id) {
 }
 </script>
 
-<script src="{{ asset('js/mushroomtrack.js') }}?v={{ time() }}"></script>
+<script src="{{ asset('js/mushroomtrack.js') }}?v={{ config('app.asset_version') ?: (@filemtime(public_path('js/mushroomtrack.js')) ?: '1') }}"></script>
 </body>
 </html>

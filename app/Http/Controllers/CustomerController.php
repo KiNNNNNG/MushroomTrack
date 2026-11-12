@@ -17,7 +17,7 @@ class CustomerController extends Controller
     public function shop()
     {
         return view('customer.shop', [
-            'products' => Product::orderBy('id')->get(),
+            'products' => Product::withReservedStock()->orderBy('id')->get(),
         ]);
     }
 
@@ -142,7 +142,7 @@ class CustomerController extends Controller
         ]);
         $selectedIds = $data['cart_ids'];
 
-        $query = CartItem::with('product')->where('user_id', $u->id);
+        $query = CartItem::with(['product' => fn ($query) => $query->withReservedStock()])->where('user_id', $u->id);
         if (!empty($selectedIds)) {
             $query->whereIn('id', $selectedIds);
         }
@@ -224,7 +224,7 @@ class CustomerController extends Controller
     /** Step 1: choose pickup / delivery and how to pay. */
     public function checkoutPage(Request $request)
     {
-        $items = CartItem::with('product')->where('user_id', $request->user()->id)->get();
+        $items = CartItem::with(['product' => fn ($query) => $query->withReservedStock()])->where('user_id', $request->user()->id)->get();
         if ($items->isEmpty()) return redirect()->route('customer.shop')->withErrors('Your cart is empty.');
 
         return view('customer.checkout', [
@@ -253,7 +253,7 @@ class CustomerController extends Controller
             'contact_phone.regex'       => 'Enter a valid contact number.',
         ]);
 
-        $items = CartItem::with('product')->where('user_id', $u->id)->get();
+        $items = CartItem::with(['product' => fn ($query) => $query->withReservedStock()])->where('user_id', $u->id)->get();
         if ($items->isEmpty()) return redirect()->route('customer.shop')->withErrors('Your cart is empty.');
         foreach ($items as $i) {
             if ($i->quantity_kg > $i->product->available_stock_kg) {

@@ -406,19 +406,30 @@ if ('serviceWorker' in navigator) {
           reg.update();
         }
 
-        // Only cache worker pages if the user is actively inside the worker section
+        // Warm offline pages at most once per user/session every ten minutes.
+        // Starting three PHP requests after every click competes with the next navigation.
         if (navigator.onLine && 'caches' in window && window.location.pathname.startsWith('/worker')) {
-          caches.open('mushfung-cache-v6').then(cache => {
-            ['/offline', '/worker/monitoring', '/worker/overview'].forEach(url => {
-              fetch(url, { redirect: 'follow' })
-                .then(res => {
-                  if (res && (res.ok || res.status === 200)) {
-                    cache.put(url, res);
-                  }
-                })
-                .catch(() => {});
-            });
-          });
+          const key = 'mushfung-worker-warmup:' + (document.body.dataset.userId || '');
+          let lastWarmup = 0;
+          try { lastWarmup = Number(sessionStorage.getItem(key) || 0); } catch (_) {}
+          if (Date.now() - lastWarmup >= 600000) {
+            try { sessionStorage.setItem(key, String(Date.now())); } catch (_) {}
+            const warmup = async () => {
+              const cache = await caches.open('mushfung-cache-v6');
+              for (const url of ['/offline', '/worker/monitoring', '/worker/overview']) {
+                if (url === window.location.pathname) continue;
+                try {
+                  const res = await fetch(url, { redirect: 'follow' });
+                  if (res.ok && !res.redirected) await cache.put(url, res);
+                } catch (_) {}
+              }
+            };
+            if ('requestIdleCallback' in window) {
+              window.requestIdleCallback(() => warmup().catch(() => {}));
+            } else {
+              setTimeout(() => warmup().catch(() => {}), 1500);
+            }
+          }
         }
       })
       .catch(err => {
@@ -469,33 +480,35 @@ window.installMushFungApp = function() {
   }
 };
 
-/* Instant Navigation / Tab Prefetcher */
+/* Prefetch navigation links after deliberate hover, with one request at a time. */
 (function() {
   const prefetched = new Set();
+  let hoverTimer;
   function prefetchUrl(url) {
-    if (!url || prefetched.has(url)) return;
+    const connection = navigator.connection;
+    if (!navigator.onLine || connection?.saveData || /(^|-)2g$/.test(connection?.effectiveType || '')) return;
     try {
       const parsed = new URL(url, window.location.href);
-      if (parsed.origin !== window.location.origin) return;
-      if (parsed.pathname === window.location.pathname) return;
-      if (parsed.pathname.includes('/logout') || parsed.pathname.includes('/login') || parsed.pathname.includes('/register')) return;
-      prefetched.add(url);
+      if (parsed.origin !== window.location.origin || parsed.href === window.location.href || prefetched.has(parsed.href)) return;
+      prefetched.add(parsed.href);
+      document.querySelector('link[data-navigation-prefetch]')?.remove();
       const link = document.createElement('link');
       link.rel = 'prefetch';
-      link.href = url;
+      link.href = parsed.href;
       link.as = 'document';
+      link.dataset.navigationPrefetch = '1';
       document.head.appendChild(link);
-    } catch(e) {}
+    } catch (_) {}
   }
-
-  document.addEventListener('touchstart', (e) => {
-    const a = e.target.closest('a[href]');
-    if (a) prefetchUrl(a.href);
+  document.addEventListener('mouseover', e => {
+    const link = e.target.closest('nav a[href]');
+    if (!link || link.contains(e.relatedTarget)) return;
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => prefetchUrl(link.href), 180);
   }, { passive: true });
-
-  document.addEventListener('mouseover', (e) => {
-    const a = e.target.closest('a[href]');
-    if (a) prefetchUrl(a.href);
+  document.addEventListener('mouseout', e => {
+    const link = e.target.closest('nav a[href]');
+    if (link && !link.contains(e.relatedTarget)) clearTimeout(hoverTimer);
   }, { passive: true });
 })();
 

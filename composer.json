@@ -95,6 +95,10 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+        ],
+        "vercel": [
+            "@php scripts/verify-tidb-certificate.php",
+            "@php artisan config:clear --ansi"
         ]
     },
     "extra": {
